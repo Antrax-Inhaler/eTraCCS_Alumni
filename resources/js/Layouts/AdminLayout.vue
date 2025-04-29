@@ -652,6 +652,10 @@
       <i class="fas fa-project-diagram"></i>
       <span>Competency Mapping</span>
     </Link>
+    <Link href="/reports/competency-mapping" class="nav-item" :class="{ 'active': $page.url.startsWith('/reports/competency-mapping') }">
+      <i class="fas fa-project-diagram"></i>
+      <span>Competency Mapping</span>
+    </Link>
   </div>
 
   <!-- GIS & Analytics -->

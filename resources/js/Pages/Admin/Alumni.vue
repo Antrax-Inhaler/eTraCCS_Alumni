@@ -35,9 +35,8 @@ const unverifyAlumni = (userId) => {
 <template>
     <Head title="Alumni Management" />
     
-    <AdminLayout>
+    <AdminLayout title="Alumni Management" >
         <div class="main-content">
-            <h1 class="page-title">Alumni Management</h1>
 
             <!-- Filters Section -->
             <div class="data-section">

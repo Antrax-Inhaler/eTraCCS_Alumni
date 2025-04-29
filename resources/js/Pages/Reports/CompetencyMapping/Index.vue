@@ -205,7 +205,6 @@
     justify-content: space-between;
     align-items: center;
     padding: 1rem 2rem;
-    background-color: var(--bg-darker);
     color: var(--text-primary);
   }
   

@@ -667,7 +667,7 @@ const getRandomGradient = () => {
 <template>
   <Head title="Admin Dashboard" />
   
-  <AdminLayout>
+  <AdminLayout title="Dashboard">
     <!-- Stats Cards -->
     <div class="stats-cards">
       <div class="stat-card">

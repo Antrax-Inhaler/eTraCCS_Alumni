@@ -41,10 +41,8 @@ const verifyUser = (id) => {
 </script>
 
 <template>
-    <AdminLayout>
+    <AdminLayout title="Unverified Alumni">
       <div class="main-content">
-        <h1 class="page-title">Unverified Alumni</h1>
-
         <!-- Verification Message -->
         <div v-if="verificationMessage.show" 
              :class="{
