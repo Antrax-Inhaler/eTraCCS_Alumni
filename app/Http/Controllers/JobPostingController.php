@@ -18,7 +18,11 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Crypt;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
-
+use App\Models\EducationalBackground;
+use App\Models\EmploymentHistory;
+use App\Models\JobHuntingExperience;
+use App\Models\BsitProgramSuggestion;
+use App\Models\UnemployedDetail;
 class JobPostingController extends Controller
 {
     public function index(Request $request)
@@ -33,7 +37,7 @@ class JobPostingController extends Controller
                     'message' => 'User must be authenticated to access this resource.',
                 ], 401);
             }
-    
+    $completeness = $this->checkProfileCompleteness($user);
             // ✅ Step 2: Fetch all users with minimal info & is_online status
             // In your controller
 $users = User::select('id', 'first_name', 'last_name', 'profile_photo_path', 'last_seen_at')
@@ -58,7 +62,7 @@ $users = User::select('id', 'first_name', 'last_name', 'profile_photo_path', 'la
                 });
     
             // ✅ Step 4: Fetch paginated content items with eager loading
-            $perPage = 30;
+            $perPage = 40;
             $query = ContentItem::with(['mediaFiles', 'reactions', 'comments.user', 'creator']);
             $paginatedItems = $query->paginate($perPage);
     
@@ -79,6 +83,9 @@ $users = User::select('id', 'first_name', 'last_name', 'profile_photo_path', 'la
                 ],
                 'userList' => $users,
                 'recommendedUsers' => $this->recommendUsersTo($user),
+                'auth_user_id' => $user->id,
+                'encrypted_id' => Crypt::encryptString($user->id),
+            ...$completeness, // Spread the completeness array
             ]);
     
         } catch (\Exception $e) {
@@ -89,6 +96,78 @@ $users = User::select('id', 'first_name', 'last_name', 'profile_photo_path', 'la
             ], 500);
         }
     }
+protected function checkProfileCompleteness(User $user): array
+{
+    $hasEmploymentHistory = $this->checkEmployment($user);
+    $isCurrentlyEmployed = $this->checkCurrentEmployment($user);
+    $hasPastEmployment = $this->checkPastEmployment($user);
+    $hasUnemploymentDetails = $this->checkUnemploymentDetails($user);
+    
+    return [
+        'hasEducation' => $this->checkEducation($user),
+        'hasEmploymentHistory' => $hasEmploymentHistory,
+        'isCurrentlyEmployed' => $isCurrentlyEmployed,
+        'hasPastEmployment' => $hasPastEmployment,
+        'hasUnemploymentDetails' => $hasUnemploymentDetails,
+        'shouldShowJobHunting' => $hasPastEmployment || $hasUnemploymentDetails,
+        'hasJobHunting' => $this->checkJobHunting($user),
+        'hasCompetencies' => $this->checkCompetencies($user),
+        'hasLocation' => $this->checkLocation($user),
+        'hasProgramSuggestions' => $this->checkProgramSuggestions($user),
+    ];
+}
+
+protected function checkCurrentEmployment(User $user): bool
+{
+    return EmploymentHistory::where('user_id', $user->id)
+        ->whereNull('end_date')
+        ->exists();
+}
+
+protected function checkPastEmployment(User $user): bool
+{
+    return EmploymentHistory::where('user_id', $user->id)
+        ->whereNotNull('end_date')
+        ->exists();
+}
+
+protected function checkUnemploymentDetails(User $user): bool
+{
+    return UnemployedDetail::where('user_id', $user->id)->exists();
+}
+protected function checkEducation(User $user): bool
+{
+    return EducationalBackground::where('user_id', $user->id)
+        ->where('from_mindoro_state', 1)
+        ->exists();
+}
+
+protected function checkEmployment(User $user): bool
+{
+    return EmploymentHistory::where('user_id', $user->id)->exists();
+}
+
+protected function checkJobHunting(User $user): bool
+{
+    return JobHuntingExperience::where('user_id', $user->id)->exists();
+}
+
+protected function checkCompetencies(User $user): bool
+{
+    return EmploymentHistory::where('user_id', $user->id)
+        ->whereNotNull('competencies')
+        ->where('competencies', '!=', '')
+        ->exists();
+}
+
+protected function checkLocation(User $user): bool
+{
+    return !empty($user->city) && !empty($user->country);
+}
+protected function checkProgramSuggestions(User $user): bool
+{
+    return BsitProgramSuggestion::where('user_id', $user->id)->exists();
+}
     public function index2(Request $request)
     {
         try {
@@ -124,7 +203,7 @@ $users = User::select('id', 'first_name', 'last_name', 'profile_photo_path', 'la
                 });
     
             // ✅ Step 4: Fetch paginated content items with eager loading
-            $perPage = 20;
+            $perPage = 30;
             $query = ContentItem::with(['mediaFiles', 'reactions', 'comments.user', 'creator']);
             $paginatedItems = $query->paginate($perPage);
     
@@ -178,6 +257,7 @@ $users = User::select('id', 'first_name', 'last_name', 'profile_photo_path', 'la
     {
         return [
             'id' => $user->id,
+           'encrypted_id' => Crypt::encryptString($user->id),
             'name' => $user->name,
             'email' => $user->email,
             'first_name' => $user->first_name,
@@ -575,44 +655,80 @@ private function recommendUsersTo($user)
 
 public function storeContentItem(Request $request)
 {
+ $tags = [];
+    
+    // Handle tags input
+if ($request->has('tags')) {
+    $tagsInput = $request->input('tags');
+
+    if (is_string($tagsInput) && $tagsInput !== '') {
+        $decoded = json_decode($tagsInput, true);
+        $tags = is_array($decoded) ? $decoded : [];
+    } elseif (is_array($tagsInput)) {
+        $tags = $tagsInput;
+    }
+
+    // Optional: clean tags
+    $tags = array_filter($tags, fn($tag) => !empty(trim($tag)));
+}
+
+
     // Validate common fields
     $request->validate([
-        'type' => 'required|in:event,post,job_posting', // Ensure valid content type
+        'type' => 'required|in:event,post,job_posting',
         'title' => 'nullable|string|max:255',
         'body' => 'nullable|string',
+        'tags' => 'nullable',
         'event_name' => 'nullable|string|max:255|required_if:type,event',
         'date' => 'nullable|date|required_if:type,event',
-        'latitude' => 'nullable|numeric|between:-90,90|required_if:type,event|required_if:type,job_posting', // Latitude for events and job postings
-        'longitude' => 'nullable|numeric|between:-180,180|required_if:type,event|required_if:type,job_posting', // Longitude for events and job postings
+        'latitude' => 'nullable|numeric|between:-90,90|required_if:type,event|required_if:type,job_posting',
+        'longitude' => 'nullable|numeric|between:-180,180|required_if:type,event|required_if:type,job_posting',
         'company_name' => 'nullable|string|max:255|required_if:type,job_posting',
         'job_title' => 'nullable|string|max:255|required_if:type,job_posting',
         'description' => 'nullable|string|required_if:type,job_posting',
         'media_files' => 'nullable|array',
-        'media_files.*' => 'file|mimes:jpg,jpeg,png,pdf,mp4,mov,avi|max:10240', // Max 10MB per file
-
-        // New fields
+        'media_files.*' => 'file|mimes:jpg,jpeg,png,pdf,mp4,mov,avi|max:10240',
         'organizer_name' => 'nullable|string|max:255|required_if:type,event',
         'registration_link' => 'nullable|url|required_if:type,event',
-        'salary_range' => 'nullable|string|max:100|required_if:type,job_posting',
+        // 'salary_range' => 'nullable|string|max:100|required_if:type,job_posting',
         'application_deadline' => 'nullable|date|required_if:type,job_posting',
-        'tags' => 'nullable|array', // Tags for posts (JSON)
-        'is_remote' => 'nullable|boolean', // Is the job remote?
+        'is_remote' => 'nullable|boolean',
         'privacy_setting' => 'required|in:public,private,batchmates,campus_only',
     ]);
 
     // Extract validated data
     $data = $request->only([
-        'type', 'title', 'body', 'event_name', 'date', 'latitude', 'longitude',
+        'type', 'title', 'body', 'event_name', 'date', 'latitude', 'longitude','city', 'country',
         'company_name', 'job_title', 'description',
-        'organizer_name', 'registration_link', 'salary_range', 'application_deadline', 'tags', 'is_remote', 
+        'organizer_name', 'registration_link', 'salary_range', 
+        'application_deadline', 'tags', 'is_remote', 'privacy_setting'
     ]);
-
+    $data['tags'] = $tags;
+    
+    // Debug: Check what will be saved
+    \Log::info('Tags before save:', ['tags' => $data['tags']]);
     // Add the authenticated user's ID
     $data['user_id'] = auth()->id();
-
-    // Handle tags as JSON
-    if (isset($data['tags'])) {
-        $data['tags'] = json_encode($data['tags']); // Convert tags array to JSON
+    // Get location details from OpenWeatherMap if coordinates are provided
+    if ($request->has(['latitude', 'longitude'])) {
+        try {
+            $apiKey = "2f745fa85d563da5adb87b6cd4b81caf";
+            $latitude = $request->latitude;
+            $longitude = $request->longitude;
+            
+            $client = new \GuzzleHttp\Client();
+            $response = $client->get("https://api.openweathermap.org/data/2.5/weather?lat={$latitude}&lon={$longitude}&appid={$apiKey}");
+            
+            $weatherData = json_decode($response->getBody(), true);
+            
+            if (isset($weatherData['name']) && isset($weatherData['sys']['country'])) {
+                $data['city'] = $weatherData['name'];
+                $data['country'] = $weatherData['sys']['country'];
+            }
+        } catch (\Exception $e) {
+            // Log error but don't fail the request
+            \Log::error("Failed to fetch location data: " . $e->getMessage());
+        }
     }
 
     // Create the content item
@@ -621,7 +737,7 @@ public function storeContentItem(Request $request)
     // Handle media file uploads
     if ($request->hasFile('media_files')) {
         foreach ($request->file('media_files') as $file) {
-            $filePath = $file->store('job_postings', 'public'); // Store in storage/app/public/content_items
+            $filePath = $file->store('content_items', 'public');
             $contentItem->mediaFiles()->create([
                 'file_type' => $file->getClientMimeType(),
                 'file_path' => $filePath,
@@ -629,10 +745,8 @@ public function storeContentItem(Request $request)
         }
     }
 
-    // Redirect back with success message
     return redirect()->back()->with('success', ucfirst($contentItem->type) . ' created successfully!');
 }
-
 public function addOrUpdateReaction(Request $request)
 {
     try {
@@ -845,6 +959,90 @@ public function getRecentStories()
             'success' => false,
             'message' => 'An unexpected error occurred.',
         ], 500);
+    }
+}
+// JobHuntingController.php
+public function storeJobHunting(Request $request)
+{
+     $validated = $request->validate([
+        'time_to_first_job' => 'required|in:less_than_1_month,1_to_3_months,4_to_6_months,7_to_12_months,more_than_1_year,never_employed',
+        'difficulties' => 'sometimes|string',
+        'other_difficulty' => 'nullable|string|max:255',
+        'job_source' => 'required|in:online_portals,walk_in,referral,university_fair,social_media,government,other',
+        'other_source' => 'nullable|required_if:job_source,other|string|max:255',
+        'starting_salary' => 'nullable|in:below_10k,10k_15k,15k_20k,20k_30k,above_30k'
+    ]);
+
+    try {
+        $jobHunting = JobHuntingExperience::updateOrCreate(
+            ['user_id' => auth()->id()],
+            $validated
+        );
+
+        return redirect()->back()->with([
+            'success' => 'Job hunting experience saved successfully',
+            'jobHuntingData' => $jobHunting
+        ]);
+
+    } catch (\Exception $e) {
+        return redirect()->back()->withErrors([
+            'error' => 'Error saving job hunting experience: ' . $e->getMessage()
+        ]);
+    }
+}
+
+// ProgramSuggestionController.php
+public function storeProgramSuggestion(Request $request)
+{
+ $validated = $request->validate([
+        'suggestion_type' => 'required|in:industry_aligned_subjects,hands_on_projects,updated_tools,stronger_internship,cert_prep,career_services,other',
+        'description' => 'required|string|min:20|max:1000',
+    ]);
+
+    try {
+        $suggestion = auth()->user()->programSuggestions()->create($validated);
+
+        return redirect()->back()->with([
+            'success' => 'Program suggestion submitted successfully',
+            'suggestion' => $suggestion
+        ]);
+
+    } catch (\Exception $e) {
+        return redirect()->back()->withErrors([
+            'error' => 'Error submitting program suggestion: ' . $e->getMessage()
+        ]);
+    }
+}
+// UnemploymentDetailController.php
+public function storeUnemploymentDetail(Request $request)
+{
+    $validated = $request->validate([
+        'unemployment_reasons' => 'required|array',
+        'unemployment_reasons.*' => 'string|in:seeking,studying,family_responsibilities,health_issues,not_interested,other',
+        'other_unemployment_reason' => 'nullable|required_if:unemployment_reasons,other|string|max:255',
+        'has_awards' => 'required|boolean',
+        'awards_details' => 'nullable|required_if:has_awards,true|string|max:1000'
+    ]);
+
+    try {
+        $unemployment = UnemployedDetail::updateOrCreate(
+            ['user_id' => auth()->id()],
+            [
+                'unemployment_reasons' => $validated['unemployment_reasons'], // Let the mutator handle conversion
+                'other_unemployment_reason' => $validated['other_unemployment_reason'] ?? null,
+                'has_awards' => $validated['has_awards'],
+                'awards_details' => $validated['awards_details'] ?? null
+            ]
+        );
+
+        return redirect()->back()->with([
+            'success' => 'Unemployment details saved successfully',
+            'isUnemployed' => true
+        ]);
+    } catch (\Exception $e) {
+        return redirect()->back()->withErrors([
+            'error' => 'Error saving unemployment details: ' . $e->getMessage()
+        ]);
     }
 }
 }

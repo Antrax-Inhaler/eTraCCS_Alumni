@@ -219,6 +219,7 @@ nav a:hover::after {
     font-weight: 700;
     margin-bottom: 20px;
     line-height: 1.2;
+    color: #cccccc;
 }
 
 .hero p {
@@ -291,6 +292,7 @@ nav a:hover::after {
     display: inline-block;
     left: 50%;
     transform: translateX(-50%);
+    color: var(--text-secondary);
 }
 
 .section-title::after {
@@ -696,21 +698,21 @@ footer {
                 <Link
                     v-if="$page.props.auth.user"
                     :href="route('dashboard')"
-                    class="cta-button"
+                    class=""
                 >
                     Dashboard
                 </Link>
                 <template v-else>
                     <Link
                         :href="route('login')"
-                        class="cta-button"
+                        class=""
                     >
                         Log in
                     </Link>
                     <Link
                         v-if="canRegister"
                         :href="route('register')"
-                        class="cta-button"
+                        class=""
                     >
                         Register
                     </Link>
@@ -730,7 +732,7 @@ footer {
                 </div>
             </div>
             <div class="hero-image">
-                <img src="https://via.placeholder.com/600x400/1a1a1a/ff8c00?text=eTraCCS+Dashboard" alt="eTraCCS Dashboard" class="dashboard-mockup floating">
+                <img src="/storage/designer/eTraCCS-logo.png" alt="eTraCCS Dashboard" class="dashboard-mockup floating">
             </div>
         </div>
     </section>
@@ -840,7 +842,7 @@ footer {
                     </div>
                     <span>eTraCCS</span>
                 </div>
-                <p>The official alumni portal of the College of Computer Studies, connecting graduates and fostering professional growth since 2023.</p>
+                <p>The official alumni portal of the College of Computer Studies, connecting graduates and fostering professional growth since 2025.</p>
                 <div class="social-links">
                     <a href="#"><i class="fab fa-facebook-f"></i></a>
                     <a href="#"><i class="fab fa-twitter"></i></a>
@@ -878,11 +880,11 @@ footer {
         </div>
         
         <div class="copyright">
-            &copy; 2023 eTraCCS Alumni Portal. All rights reserved.
+            &copy; 2023 eTraCCS. All rights reserved.
         </div>
     </footer>
 
         <!-- Footer -->
-        <footer class="w-full max-w-7xl mx-auto px-6 py-10 text-center text-sm text-gray-600 dark:text-gray-400">
+        <footer class="w-full mx-auto px-6 py-10 text-center text-sm text-gray-600 dark:text-gray-400">
         </footer>
 </template>

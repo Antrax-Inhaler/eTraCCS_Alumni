@@ -295,7 +295,6 @@ const resetFilters = () => {
     padding: 0.5rem;
     border-radius: 4px;
     border: 1px solid var(--card-border);
-    background-color: var(--bg-darker);
     color: var(--text-primary);
   }
   
@@ -529,4 +528,15 @@ const resetFilters = () => {
       white-space: nowrap;
     }
   }
+  option {
+      background-color: var(--bg-dark);
+      color: var(--text-secondary);
+    }
+
+    /* Optional: style on focus */
+    select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 5px var(--primary-light);
+    }
   </style>

@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use App\Models\AdminLoginAttempt; // Add this import
+use App\Observers\AdminLoginAttemptObserver; // Add this import
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -19,6 +21,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        AdminLoginAttempt::observe(AdminLoginAttemptObserver::class);
     }
 }

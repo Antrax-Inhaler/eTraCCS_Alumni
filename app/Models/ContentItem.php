@@ -29,7 +29,13 @@ class ContentItem extends Model
         'tags', // For posts: Tags (JSON)
         'is_remote', // For job postings: Is the job remote?
         'privacy_setting',
+        'city', // For job postings: Is the job remote?
+        'country'
     ];
+    protected $casts = [
+    'tags' => 'array', // This is where you cast to array
+    'is_remote' => 'boolean',
+];
 
     // Relationships
     public function user()

@@ -53,7 +53,6 @@
     </div>
 </template>
 <script setup>
-import { defineProps } from 'vue';
 import axios from 'axios';
 
 defineProps({

@@ -49,7 +49,7 @@
 
     <!-- Post Content -->
     <div class="post-content">
-      <h3>{{ getEntityTitle(entity) }}</h3>
+      <b>{{ getEntityTitle(entity) }}</b>
       <p>{{ getEntityContent(entity) }}</p>
     </div>
 
@@ -92,7 +92,7 @@
       <!-- Common Fields -->
       <div v-if="entity.latitude && entity.longitude" class="entity-meta-item">
         <i class="fas fa-map-marker-alt"></i>
-        <span>{{ formatLocation(entity.latitude, entity.longitude) }}</span>
+        <span>{{ entity.city }}, {{ entity.country }}</span>
       </div>
       <div class="entity-meta-item">
         <i class="fas fa-star"></i>
@@ -127,10 +127,8 @@
             <img :src="`/storage/${media.file_path}`" alt="Media" />
           </div>
           <div class="post-media" v-else-if="isVideo(media.file_type)">
-            <video controls style="max-width: 100%;">
-              <source :src="`/storage/${media.file_path}`" :type="media.file_type" />
-              Your browser does not support the video tag.
-            </video>
+            <video-player controls :options="playerOptions" style="max-width: 100% important;" :src="`/storage/${media.file_path}`" :type="media.file_type" >
+            </video-player>
           </div>
           <div v-else class="post-media">
             <a :href="`/storage/${media.file_path}`" target="_blank">Download File</a>
@@ -339,8 +337,15 @@ import axios from 'axios';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { Link } from '@inertiajs/vue3';
-import { ref, defineProps, defineEmits, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
+import { VideoPlayer } from '@videojs-player/vue'
+import 'video.js/dist/video-js.css'
 
+const playerOptions = {
+  fluid: true,
+  responsive: true,
+  playbackRates: [0.5, 1, 1.5, 2]
+}
 // Extend day.js with the relativeTime plugin
 dayjs.extend(relativeTime);
 
@@ -838,7 +843,7 @@ const getPrivacyTitle = (privacySetting) => {
       return 'Friends: Visible to your friends';
     case 'followers':
       return 'Followers: Visible to your followers';
-    default:
+    default: 
       return 'Unknown privacy setting';
   }
 };

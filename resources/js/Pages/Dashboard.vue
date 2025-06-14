@@ -12,18 +12,21 @@
         ></span>
       </div>
     </div> -->
-    <div class="stories">
-          <div class="story"  v-for="user in userList" :key="user.id">
-            <div class="add-story">
-                <img :src="user.profile_photo_url" :alt="user.full_name" class="story-avatar" alt="Story">
-              <span
-          class="status-indicator "
-          :class="{ online: user.is_online, offline: !user.is_online }"
-        ></span>
+<div class="stories">
+    <div class="story" v-for="user in userList" :key="user.id">
+        <Link :href="`/profile/${user.encrypted_id}`" class="add-story">
+            <img :src="user.profile_photo_url" class="story-avatar" alt="Story">
+            <span
+                class="status-indicator"
+                :class="{ online: user.is_online, offline: !user.is_online }"
+            ></span>
+            <div class="balloon-talk">
+                <div class="balloon-text">{{ user.status_message || 'Hello there! 👋' }}</div>
             </div>
-            <span class="user-name">{{ user.full_name }}</span>
-          </div>
-        </div>
+        </Link>
+        <span class="user-name">{{ user.full_name }}</span>
+    </div>
+</div>
     <!-- <div class="mt-6">
       <h2 class="text-lg font-bold mb-4">Recommended Users</h2>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -8,16 +8,48 @@ use App\Http\Controllers\ChatController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\FollowController;
-
+use App\Models\User;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\EmailController;
+use App\Mail\TestEmail;
+use Illuminate\Support\Facades\Mail;
+
+Route::post('/send-email', function () {
+    Mail::to('jovenandrei0324@gmail.com')->send(new TestEmail());
+    return response()->json(['message' => 'Email sent']);
+});
 Route::get('/sample-tb', [SampleController::class, 'index']);
 Route::get('/user', function (Request $request) {
     return $request->user();
-})->middleware('auth:sanctum');
-
-
-Route::middleware('auth:sanctum')->group(function () {
     
+})->middleware('auth:sanctum');
+Route::get('/recipients', [EmailController::class, 'fetchRecipients']);
+
+Route::get('/api/alumni/{id}', [EmailController::class, 'show'])->name('alumni.show');
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/get-location', function (Request $request) {
+        $request->validate([
+            'lat' => 'required|numeric',
+            'lon' => 'required|numeric'
+        ]);
+        
+        try {
+            $apiKey = "2f745fa85d563da5adb87b6cd4b81caf";
+            $client = new \GuzzleHttp\Client();
+            $response = $client->get("https://api.openweathermap.org/data/2.5/weather?lat={$request->lat}&lon={$request->lon}&appid={$apiKey}");
+            
+            $data = json_decode($response->getBody(), true);
+            
+            return response()->json([
+                'city' => $data['name'] ?? null,
+                'country' => $data['sys']['country'] ?? null
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Failed to fetch location data'
+            ], 500);
+        }
+    });
     Route::post('/reactions', [JobPostingController::class, 'addOrUpdateReaction'])->name('api.reactions.add');
     Route::post('/comments', [JobPostingController::class, 'addComment'])->name('api.comments.add');
     Route::put('/posts/{id}/privacy', [JobPostingController::class, 'updatePrivacy'])->name('api.posts.updatePrivacy');
@@ -55,9 +87,9 @@ Route::get('/conversations/{id}', [ChatController::class, 'showGroupDetails'])->
 Route::post('/conversations/{conversationId}/add-participant', [ChatController::class, 'addParticipant'])
     ->name('api.conversations.add-participant');
 
-// Remove Participant
 Route::post('/conversations/{conversationId}/remove-participant', [ChatController::class, 'removeParticipant'])
     ->name('api.conversations.remove-participant');
+    Route::get('/api/chat/long-poll', [ChatController::class, 'longPoll'])->name('api.chat.long-poll');
     Route::get('/job-postings', [JobPostingController::class, 'index']);
 
     Route::get('/api/recommended-users', [UserController::class, 'getRecommendedUsers']);
@@ -66,7 +98,8 @@ Route::post('/conversations/{conversationId}/remove-participant', [ChatControlle
 Route::get('/map', [MapController::class, 'getCompanyLocationsWithUsers']);
 Route::post('/conversations/{conversationId}/mark-delivered', [ChatController::class, 'markMessagesAsDelivered'])
 ->name('api.conversations.mark-delivered');
-
+Route::get('/api/conversations/by-url/{identifier}', [ChatController::class, 'getConversationByUrl'])
+    ->name('api.conversations.by-url');
 Route::post('/conversations/{conversationId}/mark-seen', [ChatController::class, 'markMessagesAsSeen'])
 ->name('api.conversations.mark-seen');
 Route::post('/toggle-reaction', [JobPostingController::class, 'toggleReaction'])
@@ -85,3 +118,9 @@ Route::post('/toggle-reaction', [JobPostingController::class, 'toggleReaction'])
         // Toggle follow
         Route::post('/users/{user}/toggle-follow', [UserController::class, 'toggleFollow']);
     });
+    Route::get('/users', function () {
+    return User::select('id', 'name', 'email')->get();
+    
+});
+// Route::get('/api/users/{id}', [EmailController::class, 'showUserMessages']);
+Route::get('/api/users/{id}', [EmailController::class, 'showUserMessages'])->name('user.show');

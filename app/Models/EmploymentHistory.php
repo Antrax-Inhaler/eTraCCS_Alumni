@@ -14,15 +14,22 @@ class EmploymentHistory extends Model
 
     // Define fillable fields
     protected $fillable = [
-        'user_id',
-        'company_id',
-        'job_title',
-        'start_date',
-        'end_date',
-        'employment_status',
-        'is_job_related_to_degree',
-        'months_to_first_job',
-        'is_first_job',
+        'user_id', 'company_id', 'job_title', 'start_date', 'end_date',
+        'employment_type', 'is_first_job', 'months_to_first_job', 
+        'first_job_salary', 'job_source', 'other_source', 'difficulties',
+        'other_difficulty', 'employment_status', 'employer_type',
+        'current_salary', 'job_maintenance', 'has_promotion', 'has_awards',
+        'awards_details', 'unemployment_reason', 'other_unemployment_reason',
+        'competencies', 'curriculum_relevance', 'program_suggestions',
+        'other_suggestion', 'nature_of_industry'
+    ];
+
+    protected $casts = [
+        'is_first_job' => 'boolean',
+        'has_promotion' => 'boolean',
+        'has_awards' => 'boolean',
+        'start_date' => 'date',
+        'end_date' => 'date'
     ];
 
     // Define relationships

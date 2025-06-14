@@ -12,6 +12,7 @@ const form = useForm({
     middle_initial: '',
     name: '',
     email: '',
+    gender: '',
     password: '',
     password_confirmation: '',
     profile_photo_path: null,
@@ -22,18 +23,25 @@ const form = useForm({
 const profilePhotoPreview = ref(null);
 const coverPhotoPreview = ref(null);
 
+const passwordsMatch = computed(() => {
+    return form.password === form.password_confirmation && form.password !== '';
+});
+
 const nextStep = () => {
     if (currentStep.value === 1 && hasSpacesInUsername.value) {
         return; // Don't proceed if username has spaces
     }
     currentStep.value++;
 };
+
 const prevStep = () => {
     currentStep.value--;
 };
+
 const hasSpacesInUsername = computed(() => {
     return form.name.includes(' ');
 });
+
 const onProfilePhotoChange = (event) => {
     const file = event.target.files[0];
     form.profile_photo_path = file;
@@ -81,202 +89,214 @@ const stepClasses = (step) => {
 
 <template>
     <Head title="Register" />
-<div class="container">
-
-    <div class="register-container">
-        <div class="register-header">
-            <!-- <div class="logo">
-                <AuthenticationCardLogo />
-            </div> -->
-            <h2 class="register-title">Create your account</h2>
-            <p class="register-subtitle">Join our community today</p>
-        </div>
-
-        <div class="form-container">
-            <div class="progress-steps">
-                <div v-for="step in 3" :key="step" 
-                     :class="stepClasses(step)" 
-                     :data-step="step"></div>
+    <div class="container">
+        <div class="register-container">
+            <div class="register-header">
+                <h2 class="register-title">Create your account</h2>
+                <p class="register-subtitle">Join our community today</p>
             </div>
 
-            <!-- Step 1: Personal Information -->
-            <form v-show="currentStep === 1" @submit.prevent="nextStep" class="form-slide">
-                <div class="name-fields">
+            <div class="form-container">
+                <div class="progress-steps">
+                    <div v-for="step in 3" :key="step" 
+                         :class="stepClasses(step)" 
+                         :data-step="step"></div>
+                </div>
+
+                <!-- Step 1: Personal Information -->
+                <form v-show="currentStep === 1" @submit.prevent="nextStep" class="form-slide">
+                    <div class="name-fields">
+                        <div class="form-group">
+                            <label class="form-label">First Name</label>
+                            <input
+                                type="text"
+                                class="form-control"
+                                v-model="form.first_name"
+                                required
+                                autofocus
+                                autocomplete="given-name"
+                            />
+                            <InputError class="error-message" :message="form.errors.first_name" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Last Name</label>
+                            <input
+                                type="text"
+                                class="form-control"
+                                v-model="form.last_name"
+                                required
+                                autocomplete="family-name"
+                            />
+                            <InputError class="error-message" :message="form.errors.last_name" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">MI</label>
+                            <input
+                                type="text"
+                                class="form-control"
+                                v-model="form.middle_initial"
+                                maxlength="1"
+                                autocomplete="additional-name"
+                            />
+                            <InputError class="error-message" :message="form.errors.middle_initial" />
+                        </div>
+                    </div>
+
                     <div class="form-group">
-                        <label class="form-label">First Name</label>
+                        <label class="form-label">Username</label>
                         <input
                             type="text"
                             class="form-control"
-                            v-model="form.first_name"
+                            v-model="form.name"
                             required
-                            autofocus
-                            autocomplete="given-name"
+                            autocomplete="name"
+                            @input="form.name = form.name.replace(/\s/g, '')"
                         />
-                        <InputError class="error-message" :message="form.errors.first_name" />
+                        <template v-if="form.errors.name">
+                            <InputError class="error-message" :message="form.errors.name" />
+                        </template>
+                        <template v-else-if="hasSpacesInUsername">
+                            <div class="error-message">Username cannot contain spaces</div>
+                        </template>
                     </div>
+
                     <div class="form-group">
-                        <label class="form-label">Last Name</label>
+                        <label class="form-label">Email</label>
                         <input
-                            type="text"
+                            type="email"
                             class="form-control"
-                            v-model="form.last_name"
+                            v-model="form.email"
                             required
-                            autocomplete="family-name"
+                            autocomplete="email"
                         />
-                        <InputError class="error-message" :message="form.errors.last_name" />
+                        <InputError class="error-message" :message="form.errors.email" />
                     </div>
+                    
                     <div class="form-group">
-                        <label class="form-label">MI</label>
-                        <input
-                            type="text"
+                        <label class="form-label">Gender</label>
+                        <select
                             class="form-control"
-                            v-model="form.middle_initial"
-                            maxlength="1"
-                            autocomplete="additional-name"
-                        />
-                        <InputError class="error-message" :message="form.errors.middle_initial" />
+                            v-model="form.gender"
+                            required
+                        >
+                            <option value="" disabled>Select Gender</option>
+                            <option value="male">Male</option>
+                            <option value="female">Female</option>
+                        </select>
+                        <InputError class="error-message" :message="form.errors.gender" />
                     </div>
-                </div>
-
-                <div class="form-group">
-    <label class="form-label">Username</label>
-    <input
-        type="text"
-        class="form-control"
-        v-model="form.name"
-        required
-        autocomplete="name"
-        @input="form.name = form.name.replace(/\s/g, '')"
-    />
-    <template v-if="form.errors.name">
-        <InputError class="error-message" :message="form.errors.name" />
-    </template>
-    <template v-else-if="hasSpacesInUsername">
-        <div class="error-message">Username cannot contain spaces</div>
-    </template>
-</div>
-
-                <div class="form-group">
-                    <label class="form-label">Email</label>
-                    <input
-                        type="email"
-                        class="form-control"
-                        v-model="form.email"
-                        required
-                        autocomplete="email"
-                    />
-                    <InputError class="error-message" :message="form.errors.email" />
-                </div>
-
-                <div class="form-footer">
-                    <div></div>
-                    <PrimaryButton class="btn btn-primary" type="submit">
-                        Continue
-                    </PrimaryButton>
-                </div>
-            </form>
-
-            <!-- Step 2: Account Security & Photos -->
-            <form v-show="currentStep === 2" @submit.prevent="nextStep" class="form-slide">
-                <div class="form-group">
-                    <label class="form-label">Password</label>
-                    <input
-                        type="password"
-                        class="form-control"
-                        v-model="form.password"
-                        required
-                        autocomplete="new-password"
-                    />
-                    <InputError class="error-message" :message="form.errors.password" />
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Confirm Password</label>
-                    <input
-                        type="password"
-                        class="form-control"
-                        v-model="form.password_confirmation"
-                        required
-                        autocomplete="new-password"
-                    />
-                    <InputError class="error-message" :message="form.errors.password_confirmation" />
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Profile Photo (Optional)</label>
-                    <div class="file-upload">
-                        <img v-if="profilePhotoPreview" :src="profilePhotoPreview" class="preview-image" alt="Profile preview">
-                        <i v-else class="fas fa-camera"></i>
-                        <span>{{ profilePhotoPreview ? 'Change photo' : 'Click to upload profile photo' }}</span>
-                        <input
-                            type="file"
-                            @change="onProfilePhotoChange"
-                            accept="image/*"
-                        />
+                    
+                    <div class="form-footer">
+                        <div></div>
+                        <PrimaryButton class="btn btn-primary" type="submit">
+                            Continue
+                        </PrimaryButton>
                     </div>
-                    <InputError class="error-message" :message="form.errors.profile_photo_path" />
-                </div>
+                </form>
 
-                <div class="form-group">
-                    <label class="form-label">Cover Photo (Optional)</label>
-                    <label class="file-upload">
-                        <img v-if="coverPhotoPreview" :src="coverPhotoPreview" class="preview-image rectangle" alt="Cover preview">
-                        <i v-else class="fas fa-image"></i>
-                        <span>{{ coverPhotoPreview ? 'Change photo' : 'Click to upload cover photo' }}</span>
+                <!-- Step 2: Account Security & Photos -->
+                <form v-show="currentStep === 2" @submit.prevent="nextStep" class="form-slide">
+                    <div class="form-group">
+                        <label class="form-label">Password</label>
                         <input
-                            type="file"
-                            @change="onCoverPhotoChange"
-                            accept="image/*"
+                            type="password"
+                            class="form-control"
+                            v-model="form.password"
+                            required
+                            autocomplete="new-password"
                         />
-                    </label>
-                    <InputError class="error-message" :message="form.errors.cover_photo" />
-                </div>
-                <div class="form-footer">
-                    <button type="button" class="btn btn-outline" @click="prevStep">
-                        Back
-                    </button>
-                    <PrimaryButton class="btn btn-primary" type="submit">
-                        Continue
-                    </PrimaryButton>
-                </div>
-            </form>
+                        <InputError class="error-message" :message="form.errors.password" />
+                    </div>
 
-            <!-- Step 3: Terms & Final Step -->
-            <form v-show="currentStep === 3" @submit.prevent="submit" class="form-slide">
-                <div class="terms-checkbox">
-                    <input
-                        type="checkbox"
-                        id="terms"
-                        v-model="form.terms"
-                        required
-                    />
-                    <label for="terms" class="terms-text">
-                        I agree to the <a :href="route('terms.show')" target="_blank" class="underline">Terms of Service</a> and 
-                        <a :href="route('policy.show')" target="_blank" class="underline">Privacy Policy</a>.
-                        I understand that my data will be processed in accordance with these policies.
-                    </label>
-                </div>
-                <InputError class="error-message" :message="form.errors.terms" />
+                    <div class="form-group">
+                        <label class="form-label">Confirm Password</label>
+                        <input
+                            type="password"
+                            class="form-control"
+                            v-model="form.password_confirmation"
+                            required
+                            autocomplete="new-password"
+                        />
+                        <InputError class="error-message" :message="form.errors.password_confirmation" />
+                        <div v-if="form.password_confirmation && !passwordsMatch" class="error-message">
+                            Passwords do not match
+                        </div>
+                    </div>
 
-                <div class="form-footer">
-                    <button type="button" class="btn btn-outline" @click="prevStep">
-                        Back
-                    </button>
-                    <PrimaryButton class="btn btn-primary" :class="{ 'opacity-25': form.processing }" :disabled="form.processing">
-                        Create Account
-                    </PrimaryButton>
-                </div>
-            </form>
+                    <div class="form-group">
+                        <label class="form-label">Profile Photo (Optional)</label>
+                        <div class="file-upload">
+                            <img v-if="profilePhotoPreview" :src="profilePhotoPreview" class="preview-image" alt="Profile preview">
+                            <i v-else class="fas fa-camera"></i>
+                            <span>{{ profilePhotoPreview ? 'Change photo' : 'Click to upload profile photo' }}</span>
+                            <input
+                                type="file"
+                                @change="onProfilePhotoChange"
+                                accept="image/*"
+                            />
+                        </div>
+                        <InputError class="error-message" :message="form.errors.profile_photo_path" />
+                    </div>
 
-            <div class="login-link">
-                Already have an account? <Link :href="route('login')" class="underline">Log in</Link>
+                    <div class="form-group">
+                        <label class="form-label">Cover Photo (Optional)</label>
+                        <label class="file-upload">
+                            <img v-if="coverPhotoPreview" :src="coverPhotoPreview" class="preview-image rectangle" alt="Cover preview">
+                            <i v-else class="fas fa-image"></i>
+                            <span>{{ coverPhotoPreview ? 'Change photo' : 'Click to upload cover photo' }}</span>
+                            <input
+                                type="file"
+                                @change="onCoverPhotoChange"
+                                accept="image/*"
+                            />
+                        </label>
+                        <InputError class="error-message" :message="form.errors.cover_photo" />
+                    </div>
+                    
+                    <div class="form-footer">
+                        <button type="button" class="btn btn-outline" @click="prevStep">
+                            Back
+                        </button>
+                        <PrimaryButton class="btn btn-primary" type="submit" :disabled="!passwordsMatch">
+                            Continue
+                        </PrimaryButton>
+                    </div>
+                </form>
+
+                <!-- Step 3: Terms & Final Step -->
+                <form v-show="currentStep === 3" @submit.prevent="submit" class="form-slide">
+                    <div class="terms-checkbox">
+                        <input
+                            type="checkbox"
+                            id="terms"
+                            v-model="form.terms"
+                            required
+                        />
+                        <label for="terms" class="terms-text">
+                            I agree to the <a :href="route('terms.show')" target="_blank" class="underline">Terms of Service</a> and 
+                            <a :href="route('policy.show')" target="_blank" class="underline">Privacy Policy</a>.
+                            I understand that my data will be processed in accordance with these policies.
+                        </label>
+                    </div>
+                    <InputError class="error-message" :message="form.errors.terms" />
+
+                    <div class="form-footer">
+                        <button type="button" class="btn btn-outline" @click="prevStep">
+                            Back
+                        </button>
+                        <PrimaryButton class="btn btn-primary" :class="{ 'opacity-25': form.processing }" :disabled="form.processing">
+                            Create Account
+                        </PrimaryButton>
+                    </div>
+                </form>
+
+                <div class="login-link">
+                    Already have an account? <Link :href="route('login')" class="underline">Log in</Link>
+                </div>
             </div>
         </div>
     </div>
-</div>
-
 </template>
-
 <style scoped>
 :root {
     --primary: #ff8c00;
@@ -575,4 +595,20 @@ const stepClasses = (step) => {
         height: auto;
     }
 }
+option {
+      background-color: var(--bg-dark);
+      color: var(--text-secondary);
+    }
+
+    /* Optional: style on focus */
+    select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 5px var(--primary-light);
+    }
+    .additional-degree {
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
 </style>

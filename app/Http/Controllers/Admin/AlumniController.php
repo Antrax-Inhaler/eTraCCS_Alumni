@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
-
+use Illuminate\Support\Facades\Crypt;
 class AlumniController extends Controller
 {
     public function index(Request $request)
@@ -30,7 +30,14 @@ class AlumniController extends Controller
             });
         }
     
-        $alumni = $query->paginate(15);
+$alumni = $query->paginate(15);
+
+// Add encrypted_id to each user in the current page collection
+$alumni->getCollection()->transform(function ($user) {
+    $user->encrypted_id = Crypt::encryptString($user->id);
+    return $user;
+});
+
     
         $batchYears = \App\Models\EducationalBackground::distinct('year_graduated')
             ->orderBy('year_graduated', 'desc')

@@ -2,7 +2,7 @@
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ref } from 'vue';
-
+import relativeTime from 'dayjs/plugin/relativeTime';
 const props = defineProps({
     alumni: Object,
     filters: Object,
@@ -12,11 +12,13 @@ const props = defineProps({
 
 const search = ref(props.filters.search);
 const batchYear = ref(props.filters.batch_year);
+const hasAdditionalDegrees = ref(props.filters.has_additional_degrees);
 
 const filter = () => {
     router.get(route('admin.alumni.index'), {
         search: search.value,
-        batch_year: batchYear.value
+        batch_year: batchYear.value,
+        has_additional_degrees: hasAdditionalDegrees.value
     }, {
         preserveState: true,
         replace: true
@@ -30,12 +32,20 @@ const unverifyAlumni = (userId) => {
         });
     }
 };
+
+const getPrimaryDegree = (educationalBackgrounds) => {
+    return educationalBackgrounds.find(edu => edu.is_primary);
+};
+
+const getAdditionalDegrees = (educationalBackgrounds) => {
+    return educationalBackgrounds.filter(edu => !edu.is_primary && edu.degree_earned.toLowerCase().includes('bachelor'));
+};
 </script>
 
 <template>
     <Head title="Alumni Management" />
     
-    <AdminLayout title="Alumni Management" >
+    <AdminLayout title="Alumni Management">
         <div class="main-content">
 
             <!-- Filters Section -->
@@ -57,6 +67,14 @@ const unverifyAlumni = (userId) => {
                             <option v-for="year in batchYears" :value="year">{{ year }}</option>
                         </select>
                     </div>
+                    <div class="filter-group">
+                        <label>Additional Degrees</label>
+                        <select v-model="hasAdditionalDegrees" @change="filter">
+                            <option value="">All Alumni</option>
+                            <option value="1">Has Additional Degrees</option>
+                            <option value="0">No Additional Degrees</option>
+                        </select>
+                    </div>
                     <button @click="filter" class="btn btn-primary">
                         Apply Filters
                     </button>
@@ -65,43 +83,13 @@ const unverifyAlumni = (userId) => {
 
             <!-- Demographic Analytics -->
             <div class="stats-cards">
-                <div class="stat-card">
-                    <h3 class="stat-title">Gender Distribution</h3>
-                    <div v-for="item in demographics.gender" :key="item.gender" class="stat-item">
-                        <div class="stat-label">
-                            {{ item.gender || 'Not specified' }}
-                            <span class="stat-percent">{{ Math.round((item.count / alumni.total) * 100) }}%</span>
-                        </div>
-                        <div class="stat-bar">
-                            <div 
-                                class="stat-bar-fill" 
-                                :style="{ width: `${(item.count / alumni.total) * 100}%` }"
-                            ></div>
-                        </div>
-                    </div>
-                </div>
+                <!-- ... existing stat cards ... -->
 
                 <div class="stat-card">
-                    <h3 class="stat-title">Top Countries</h3>
-                    <div v-for="item in demographics.location" :key="item.country" class="stat-item">
+                    <h3 class="stat-title">Additional Degrees</h3>
+                    <div v-for="item in demographics.additional_degrees" :key="item.additional_degrees_count" class="stat-item">
                         <div class="stat-label">
-                            {{ item.country }}
-                            <span class="stat-count">{{ item.count }}</span>
-                        </div>
-                        <div class="stat-bar">
-                            <div 
-                                class="stat-bar-fill" 
-                                :style="{ width: `${(item.count / alumni.total) * 100}%` }"
-                            ></div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="stat-card">
-                    <h3 class="stat-title">Batch Distribution</h3>
-                    <div v-for="item in demographics.batch_distribution" :key="item.year_graduated" class="stat-item">
-                        <div class="stat-label">
-                            {{ item.year_graduated }}
+                            {{ item.additional_degrees_count }} additional degree(s)
                             <span class="stat-count">{{ item.count }}</span>
                         </div>
                         <div class="stat-bar">
@@ -128,10 +116,9 @@ const unverifyAlumni = (userId) => {
                         <thead>
                             <tr>
                                 <th>Name</th>
+                                <th>Primary Degree</th>
                                 <th>Batch Year</th>
-                                <th>Contact</th>
-                                <th>Location</th>
-                                <th>Status</th>
+                                <th>Additional Degrees</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -139,31 +126,40 @@ const unverifyAlumni = (userId) => {
                             <tr v-for="alum in alumni.data" :key="alum.id">
                                 <td>
                                     <div class="user-cell">
+                                                <Link :href="route('admin.alumni.show', alum.encrypted_id)">
+
                                         <img class="user-avatar" :src="alum.profile_photo_url" alt="">
                                         <div>
                                             <div class="user-name">{{ alum.first_name }} {{ alum.last_name }}</div>
                                             <div class="user-email">{{ alum.email }}</div>
                                         </div>
+                                    </Link>
                                     </div>
                                 </td>
                                 <td>
-                                    {{ alum.educational_backgrounds[0]?.year_graduated || 'N/A' }}
+                                    <div v-if="getPrimaryDegree(alum.educational_backgrounds)">
+                                        {{ getPrimaryDegree(alum.educational_backgrounds).degree_earned }}
+                                        <div class="text-sm text-muted">
+                                            {{ getPrimaryDegree(alum.educational_backgrounds).institution }}
+                                        </div>
+                                    </div>
+                                    <span v-else class="text-muted">N/A</span>
                                 </td>
                                 <td>
-                                    {{ alum.email }}
+                                    {{ getPrimaryDegree(alum.educational_backgrounds)?.year_graduated || 'N/A' }}
                                 </td>
                                 <td>
-                                    <span v-if="alum.alumni_location">
-                                        {{ alum.alumni_location.city }}, {{ alum.alumni_location.country }}
-                                    </span>
-                                    <span v-else class="text-muted">
-                                        Not specified
-                                    </span>
-                                </td>
-                                <td>
-                                    <span class="status" :class="alum.is_verified ? 'active' : 'inactive'">
-                                        {{ alum.is_verified ? 'Verified' : 'Unverified' }}
-                                    </span>
+                                    <div v-if="getAdditionalDegrees(alum.educational_backgrounds).length > 0">
+                                        <div v-for="degree in getAdditionalDegrees(alum.educational_backgrounds)" 
+                                             :key="degree.id" 
+                                             class="additional-degree">
+                                            {{ degree.degree_earned }}
+                                            <div class="text-sm text-muted">
+                                                {{ degree.institution }} ({{ degree.year_graduated || 'Studying' }})
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <span v-else class="text-muted">None</span>
                                 </td>
                                 <td>
                                     <button 
@@ -173,18 +169,17 @@ const unverifyAlumni = (userId) => {
                                     >
                                         <i class="fas fa-times-circle"></i> Unverify
                                     </button>
-                                    <!-- <Link 
-                                        :href="route('admin.alumni.show', alum.id)" 
+                                    <Link 
+                                        :href="route('admin.alumni.show', alum.encrypted_id)" 
                                         class="action-btn"
                                     >
                                         <i class="fas fa-eye"></i> View
-                                    </Link> -->
+                                    </Link>
                                 </td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
-
                 <!-- Pagination -->
                 <div class="pagination">
                     <div class="pagination-info">
@@ -503,5 +498,33 @@ tr:hover td {
         flex-direction: column;
         gap: 10px;
     }
+}
+option {
+      background-color: var(--bg-dark);
+      color: var(--text-secondary);
+    }
+
+    /* Optional: style on focus */
+    select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 5px var(--primary-light);
+    }
+    .additional-degree {
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.additional-degree:last-child {
+    border-bottom: none;
+}
+
+.text-muted {
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.text-sm {
+    font-size: 0.875rem;
 }
 </style>

@@ -92,7 +92,7 @@
       <!-- Common Fields -->
       <div v-if="entity.latitude && entity.longitude" class="entity-meta-item">
         <i class="fas fa-map-marker-alt"></i>
-        <span>{{ formatLocation(entity.latitude, entity.longitude) }}</span>
+        <span>{{ entity.city }}, {{ entity.country }}</span>
       </div>
       <div class="entity-meta-item">
         <i class="fas fa-star"></i>
@@ -127,10 +127,8 @@
             <img :src="`/storage/${media.file_path}`" alt="Media" />
           </div>
           <div class="post-media" v-else-if="isVideo(media.file_type)">
-            <video controls style="max-width: 100%;">
-              <source :src="`/storage/${media.file_path}`" :type="media.file_type" />
-              Your browser does not support the video tag.
-            </video>
+            <video-player controls :options="playerOptions" style="max-width: 100% important;" :src="`/storage/${media.file_path}`" :type="media.file_type" >
+            </video-player>
           </div>
           <div v-else class="post-media">
             <a :href="`/storage/${media.file_path}`" target="_blank">Download File</a>
@@ -191,7 +189,7 @@
     </div>
       <div class="post-action" @click="focusCommentInput(entity)">
         <i class="far fa-comment"></i>
-        <span>{{ entity.comment_count || 0 }}</span>
+        <span>{{ getCommentCountText(entity.comment_count) }}</span>
       </div>
       <div class="post-action">
         <i class="fas fa-retweet"></i>
@@ -202,77 +200,123 @@
       </div>
     </div>
 
-    <!-- Comments Section -->
     <div class="comments-section">
-      <button 
-        v-if="entity.has_more_comments"
-        @click="viewMoreComments(entity)" 
-        class="view-more-btn"
-      >
-        View More Comments ({{ entity.all_comments.length - entity.visible_comments.length }})
-      </button>
-      
-      <ul v-if="entity.visible_comments && entity.visible_comments.length > 0">
-        <li v-for="comment in entity.visible_comments" :key="comment.id" class="comment-item">
-          <div class="comment">
-            <template v-if="comment.user.profile_picture_url">
-              <img :src="comment.user.profile_picture_url" alt="Profile Picture" class="commenter-profile-picture" />
-            </template>
-            <template v-else>
-              <div class="placeholder-profile-picture">
-                {{ comment.user.full_name.charAt(0).toUpperCase() }}
-              </div>
-            </template>
-            
-            <div class="comment-column">
-              <div class="comment-balloon">
-                <strong>{{ comment.user.full_name }}</strong>
-                <p>{{ comment.content }}</p>
-              </div>
-              <div class="comment-nav">
-                <button class="reply-btn" @click="startReply(entity, comment)">Reply</button>
-              </div>
-              
-              <!-- Nested Replies -->
-              <ul v-if="comment.replies && comment.replies.length > 0" class="reply-list">
-                <li v-for="reply in comment.replies" :key="reply.id" class="comment-item">
-                  <div class="comment">
-                    <template v-if="reply.user.profile_picture_url">
-                      <img :src="reply.user.profile_picture_url" alt="Profile Picture" class="commenter-profile-picture" />
-                    </template>
-                    <template v-else>
-                      <div class="placeholder-profile-picture">
-                        {{ reply.user.full_name.charAt(0).toUpperCase() }}
-                      </div>
-                    </template>
-                    
-                    <div class="comment-column">
-                      <div class="comment-balloon">
-                        <strong>{{ reply.user.full_name }}</strong>
-                        <p>{{ reply.content }}</p>
-                      </div>
-                    </div>
-                  </div>
-                </li>
-              </ul>
-            </div>
+  <button 
+    v-if="entity.has_more_comments"
+    @click="viewMoreComments(entity)" 
+    class="view-more-btn"
+  >
+    View More Comments ({{ entity.all_comments.length - entity.visible_comments.length }})
+  </button>
+  
+  <ul v-if="entity.visible_comments && entity.visible_comments.length > 0" class="comments-list">
+    <li 
+      v-for="comment in entity.visible_comments" 
+      :key="comment.id" 
+      class="comment-item"
+      :class="{ 'has-replies': comment.replies && comment.replies.length > 0 }"
+    >
+      <div class="comment">
+        <template v-if="comment.user.profile_picture_url">
+          <img :src="comment.user.profile_picture_url" alt="Profile Picture" class="commenter-profile-picture" />
+        </template>
+        <template v-else>
+          <div class="placeholder-profile-picture">
+            {{ comment.user.full_name.charAt(0).toUpperCase() }}
           </div>
-        </li>
-      </ul>
+        </template>
+        
+        <div class="comment-column">
+          <div class="comment-balloon">
+            <div class="comment-header">
+              <strong>{{ comment.user.full_name }}</strong>
+              <span class="comment-time">2h ago</span>
+            </div>
+            <p>{{ comment.content }}</p>
+          </div>
+          <div class="comment-nav">
+            <button class="reply-btn" @click="startReply(entity, comment)">
+              <i class="fas fa-reply"></i> Reply
+            </button>
+            <span class="like-count" v-if="comment.likes_count > 0">
+              <i class="fas fa-heart"></i> {{ comment.likes_count }}
+            </span>
+          </div>
+          
+          <!-- Nested Replies -->
+          <ul v-if="comment.replies && comment.replies.length > 0" class="reply-list">
+            <li 
+              v-for="reply in comment.replies" 
+              :key="reply.id" 
+              class="reply-item"
+            >
+              <div class="comment">
+                <div class="reply-line"></div>
+                <template v-if="reply.user.profile_picture_url">
+                  <img :src="reply.user.profile_picture_url" alt="Profile Picture" class="commenter-profile-picture" />
+                </template>
+                <template v-else>
+                  <div class="placeholder-profile-picture">
+                    {{ reply.user.full_name.charAt(0).toUpperCase() }}
+                  </div>
+                </template>
+                
+                <div class="comment-column">
+                  <div class="comment-balloon reply-balloon">
+                    <div class="comment-header">
+                      <strong>{{ reply.user.full_name }}</strong>
+                      <span class="comment-time">1h ago</span>
+                    </div>
+                    <p>{{ reply.content }}</p>
+                  </div>
+                  <div class="comment-nav">
+                    <button class="reply-btn" @click="startReply(entity, reply)">
+                      <i class="fas fa-reply"></i> Reply
+                    </button>
+                    <span class="like-count" v-if="reply.likes_count > 0">
+                      <i class="fas fa-heart"></i> {{ reply.likes_count }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </li>
+  </ul>
 
-      <!-- Comment Input -->
-      <div class="comment-input">
-        <textarea
+  <!-- Comment Input -->
+  <div class="comment-input">
+    <div class="input-container">
+      <textarea
+          :id="`comment-input-${entity.id}`"
           v-model="newComment[entity.id]"
           :placeholder="getReplyPlaceholder(entity)"
           rows="1"
           @keyup.enter="addComment(entity)"
-        ></textarea>
-        <button @click="addComment(entity)">
-          <i class="fas fa-paper-plane"></i>
-        </button>
-      </div>
+      ></textarea>
+      <button 
+        @click="addComment(entity)"
+        :disabled="isPosting[entity.id]"
+        class="send-button"
+      >
+        <i v-if="!isPosting[entity.id]" class="fas fa-paper-plane"></i>
+        <span v-else class="loading-indicator">
+          <i class="fas fa-circle-notch fa-spin"></i>
+        </span>
+      </button>
     </div>
+    <div v-if="replyingTo[entity.id]" class="replying-to-indicator">
+      Replying to {{ getReplyingToName(entity) }}
+      <button @click="cancelReply(entity)" class="cancel-reply">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+  </div>
+</div>
+
+
   </div>
 
   <!-- Loading Indicator -->
@@ -293,8 +337,15 @@ import axios from 'axios';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { Link } from '@inertiajs/vue3';
-import { ref, defineProps, defineEmits, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
+import { VideoPlayer } from '@videojs-player/vue'
+import 'video.js/dist/video-js.css'
 
+const playerOptions = {
+  fluid: true,
+  responsive: true,
+  playbackRates: [0.5, 1, 1.5, 2]
+}
 // Extend day.js with the relativeTime plugin
 dayjs.extend(relativeTime);
 
@@ -403,7 +454,30 @@ const handleScroll = () => {
     observer.disconnect();
   });
 };
+const commentInputRefs = ref({});
 
+const focusCommentInput = (entity) => {
+    // Scroll to the comment section
+    const commentSection = document.getElementById(`comment-section-${entity.id}`);
+    if (commentSection) {
+        commentSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    
+    // Focus the textarea after a small delay to ensure it's visible
+    setTimeout(() => {
+        const textarea = document.getElementById(`comment-input-${entity.id}`);
+        if (textarea) {
+            textarea.focus();
+        }
+    }, 100);
+};
+
+// Helper to get comment count text
+const getCommentCountText = (count) => {
+    if (count === 0) return 'No comments';
+    if (count === 1) return '1';
+    return `${count} `;
+};
 onMounted(() => {
   handleScroll();
 });
@@ -525,37 +599,37 @@ const getTotalReactions = (counts) => {
   return Object.values(counts).reduce((sum, count) => sum + count, 0);
 };
 const newComment = ref({});
-const replyingTo = ref({}); // Track which comment is being replied to
+const replyingTo = ref({});
+const isPosting = ref({}); // Track which comment is being replied to
 
-// Helper function to get full name
-const getFullName = (user) => {
-  const firstName = user?.first_name || '';
-  const middleName = user?.middle_name ? `${user.middle_name} ` : '';
-  const lastName = user?.last_name || '';
-  return `${firstName} ${middleName}${lastName}`;
-};
-
-// Start replying to a comment
 const startReply = (entity, comment) => {
   const fullName = getFullName(comment.user);
   newComment.value[entity.id] = `@${fullName} `;
-  replyingTo.value[entity.id] = comment.id; // Track parent comment ID
+  replyingTo.value[entity.id] = comment.id;
+  // Focus the textarea
+  nextTick(() => {
+    document.getElementById(`comment-input-${entity.id}`)?.focus();
+  });
+};
+
+// Cancel reply
+const cancelReply = (entity) => {
+  newComment.value[entity.id] = '';
+  replyingTo.value[entity.id] = null;
 };
 
 // Add a comment or reply
 const addComment = async (entity) => {
-  try {
-    const content = newComment.value[entity.id]?.trim();
-    if (!content) {
-      alert('Comment cannot be empty.');
-      return;
-    }
+  const content = newComment.value[entity.id]?.trim();
+  if (!content) return;
 
-    // Send request to backend
+  isPosting.value[entity.id] = true;
+
+  try {
     const response = await axios.post('/api/comments', {
       content_item_id: entity.id,
       content: content,
-      parent_id: replyingTo.value[entity.id] || null, // Null for top-level comments
+      parent_id: replyingTo.value[entity.id] || null,
     }, {
       headers: {
         Authorization: `Bearer ${localStorage.getItem('token')}`,
@@ -563,32 +637,52 @@ const addComment = async (entity) => {
     });
 
     if (response.status === 200) {
-      // Add the new comment to the local state
       const newCommentData = response.data.comment;
-
+      
+      // Add to local state
       if (newCommentData.parent_id) {
-        // Find the parent comment and add the reply
-        const parentComment = entity.comments.find(
-          (comment) => comment.id === newCommentData.parent_id
+        const parentComment = entity.visible_comments.find(
+          c => c.id === newCommentData.parent_id
         );
         if (parentComment) {
           parentComment.replies = parentComment.replies || [];
           parentComment.replies.push(newCommentData);
         }
       } else {
-        // Add as a top-level comment
-        entity.comments.push(newCommentData);
+        entity.visible_comments.push(newCommentData);
       }
 
-      // Clear the input field and reset reply state
+      // Reset input
       newComment.value[entity.id] = '';
       replyingTo.value[entity.id] = null;
     }
   } catch (error) {
-    console.error('Error adding comment:', error.response?.data || error.message);
+    console.error('Error adding comment:', error);
+    // Optionally show error to user
+  } finally {
+    isPosting.value[entity.id] = false;
   }
 };
+const getFullName = (user) => {
+  const firstName = user?.first_name || '';
+  const middleName = user?.middle_name ? `${user.middle_name} ` : '';
+  const lastName = user?.last_name || '';
+  return `${firstName} ${middleName}${lastName}`;
+};
 
+// Get name of user being replied to
+const getReplyingToName = (entity) => {
+  if (!replyingTo.value[entity.id]) return '';
+  const comment = entity.visible_comments.find(c => c.id === replyingTo.value[entity.id]) ||
+                 entity.visible_comments.flatMap(c => c.replies || []).find(r => r.id === replyingTo.value[entity.id]);
+  return comment?.user?.full_name || '';
+};
+
+
+// Toggle replies visibility
+const toggleReplies = (commentId) => {
+  showReplies.value[commentId] = !showReplies.value[commentId];
+};
 // Get placeholder for comment input
 const getReplyPlaceholder = (entity) => {
   return replyingTo.value[entity.id]

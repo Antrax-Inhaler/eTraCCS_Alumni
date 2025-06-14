@@ -1,4 +1,5 @@
-<style scoped>
+<style>
+
     :root {
       --primary: #ff8c00;
       --primary-light: rgba(255, 140, 0, 0.1);
@@ -19,14 +20,14 @@
       padding: 0;
     }
     body{
-      background-image: url('https://images.unsplash.com/photo-1562774053-701939374585?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1472&q=80');
+    background-image: url('/storage/app/public/designer/slides_3 (1).jpg');
 
     }
     .body {
       font-family: 'Inter', sans-serif;
       background: var(--bg-darker);
       color: var(--text-primary);
-      background-image: url('https://images.unsplash.com/photo-1562774053-701939374585?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1472&q=80');
+    background-image: url('/storage/app/public/designer/slides_3 (1).jpg');
       background-size: cover;
       background-attachment: fixed;
       min-height: 100vh;
@@ -51,7 +52,6 @@
       position: sticky;
       top: 0;
       z-index: 100;
-      overflow-y: auto;
     }
 
     .sidebar-header {
@@ -87,11 +87,6 @@
       scrollbar-width: none; /* Firefox */
       flex-direction: row;
     }
-
-    .nav-menu::-webkit-scrollbar {
-      display: none; /* Chrome/Safari */
-    }
-
     .nav-group {
       display: flex;
     }
@@ -113,6 +108,8 @@
       min-width: 70px;
       font-size: 12px;
       text-align: center;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+
     }
 
     .nav-item:hover {
@@ -497,6 +494,8 @@
         display: block;
         overflow-x: visible;
         padding: 0 10px;
+        overflow-y: auto;
+        height: 90vh;
       }
       
       .nav-group {
@@ -570,149 +569,154 @@
         color: black !important;
       }
     }
+    nav{
+      overflow-y: auto;
+      
+    }
+    nav-item{
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8) !important;
+    }
 </style>
 
 <template>
+  <div :style="{
+        '--primary': themeColors.primary,
+        '--primary-light': themeColors.primary_light,
+        '--text-primary': themeColors.text_primary,
+        '--text-secondary': themeColors.text_secondary,
+        '--bg-dark': themeColors.bg_dark,
+        '--bg-darker': themeColors.bg_darker,
+        '--card-bg': themeColors.card_bg,
+        '--card-border': themeColors.card_border
+    }"></div>
   <div class="app-container">
     <!-- Sidebar Navigation -->
-    <aside class="sidebar">
-      <div class="sidebar-header">
-        <div class="logo">
-          <div class="logo-icon">
-            <i class="fas fa-graduation-cap"></i>
-          </div>
-          <span>eTraCCS Admin</span>
-        </div>
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <div class="logo">
+      <div class="logo-icon">
+        <i class="fas fa-graduation-cap"></i>
       </div>
-
-      <nav class="nav-menu">
-  <!-- Dashboard -->
-  <div class="nav-group">
-    <div class="nav-title">Main</div>
-    <Link href="/admin/dashboard" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/dashboard') }">
-      <i class="fas fa-home"></i>
-      <span>Dashboard</span>
-    </Link>
+      <span>eTraCCS Admin</span>
+    </div>
   </div>
 
-  <!-- Alumni Management -->
-  <div class="nav-group">
-    <div class="nav-title">Alumni</div>
-    <Link href="/admin/alumni" class="nav-item" :class="{ 'active': $page.url === '/admin/alumni' }">
-      <i class="fas fa-users"></i>
-      <span>All Alumni</span>
-    </Link>
-    <Link href="/admin/alumni/verification" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/alumni/verification') }">
-      <i class="fas fa-check-circle"></i>
-      <span>Profile Verification</span>
-    </Link>
-    <Link href="/admin/alumni/groups" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/alumni/groups') }">
-      <i class="fas fa-layer-group"></i>
-      <span>Alumni Groups</span>
-    </Link>
-  </div>
+  <nav class="nav-menu">
+    <!-- Dashboard -->
+    <div class="nav-group">
+      <div class="nav-title">Main</div>
+      <Link href="/admin/dashboard" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/dashboard') }">
+        <i class="fas fa-tachometer-alt"></i> <!-- Changed from fa-home to fa-tachometer-alt (more dashboard-like) -->
+        <span>Dashboard</span>
+      </Link>
+    </div>
 
-  <!-- Employment & Education -->
-  <div class="nav-group">
-    <div class="nav-title">Tracking</div>
-    <Link href="/admin/educational-tracking" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/educational-tracking') }">
-      <i class="fas fa-graduation-cap"></i>
-      <span>Educational Tracking</span>
-    </Link>
-    <Link href="/admin/employability-analytics" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/employability-analytics') }">
-      <i class="fas fa-chart-line"></i>
-      <span>Employability Analytics</span>
-    </Link>
-    <Link href="/admin/training" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/training') }">
-      <i class="fas fa-certificate"></i>
-      <span>Training</span>
-    </Link>
-  </div>
+    <!-- Alumni Management -->
+    <div class="nav-group">
+      <div class="nav-title">Alumni</div>
+      <Link href="/admin/alumni" class="nav-item" :class="{ 'active': $page.url === '/admin/alumni' }">
+        <i class="fas fa-user-graduate"></i> <!-- Changed from fa-users to fa-user-graduate (more specific to alumni) -->
+        <span>All Alumni</span>
+      </Link>
+      <Link href="/admin/verification" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/alumni/verification') }">
+        <i class="fas fa-user-check"></i> <!-- Changed from fa-check-circle to fa-user-check (more specific to profile verification) -->
+        <span>Profile Verification</span>
+      </Link>
+      <Link href="/admin/alumni-messaging" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/alumni-messaging') }">
+        <i class="fas fa-envelope"></i> <!-- Changed from fa-check-circle to fa-envelope (more appropriate for messaging) -->
+        <span>Contact Alumni</span>
+      </Link>
+    </div>
 
-  <!-- Reports Section -->
-  <div class="nav-group">
-    <div class="nav-title">Reports</div>
-    <Link href="/reports/graduate-profiles" class="nav-item" :class="{ 'active': $page.url.startsWith('/reports/graduate-profiles') }">
-      <i class="fas fa-user-graduate"></i>
-      <span>Graduate Profiles</span>
-    </Link>
-    <Link href="/reports/advancement" class="nav-item" :class="{ 'active': $page.url.startsWith('/reports/advancement') }">
-      <i class="fas fa-arrow-up"></i>
-      <span>Advancement</span>
-    </Link>
-    <Link href="/reports/employment-status" class="nav-item" :class="{ 'active': $page.url.startsWith('/reports/employment-status') }">
-      <i class="fas fa-briefcase"></i>
-      <span>Employment Status</span>
-    </Link>
-    <Link href="/reports/employability-metrics" class="nav-item" :class="{ 'active': $page.url.startsWith('/reports/employability-metrics') }">
-      <i class="fas fa-chart-bar"></i>
-      <span>Employability Metrics</span>
-    </Link>
-    <Link href="/reports/competency-mapping" class="nav-item" :class="{ 'active': $page.url.startsWith('/reports/competency-mapping') }">
-      <i class="fas fa-project-diagram"></i>
-      <span>Competency Mapping</span>
-    </Link>
-    <Link href="/reports/competency-mapping" class="nav-item" :class="{ 'active': $page.url.startsWith('/reports/competency-mapping') }">
-      <i class="fas fa-project-diagram"></i>
-      <span>Competency Mapping</span>
-    </Link>
-  </div>
+    <!-- Employment & Education -->
+    <div class="nav-group">
+      <div class="nav-title">Tracking</div>
+      <Link href="/admin/graduate-employability" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/graduate-employability') }">
+        <i class="fas fa-briefcase"></i> <!-- Changed from fa-certificate to fa-briefcase (better for employability) -->
+        <span>Graduate Employability</span>
+      </Link>
+      <Link href="/admin/educational-tracking" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/educational-tracking') }">
+        <i class="fas fa-university"></i> <!-- Changed from fa-graduation-cap to fa-university (better for educational tracking) -->
+        <span>Educational Tracking</span>
+      </Link>
+    </div>
 
-  <!-- GIS & Analytics -->
-  <div class="nav-group">
-    <div class="nav-title">Analytics</div>
-    <Link href="/admin/mapping" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/mapping') }">
-      <i class="fas fa-map-marked-alt"></i>
-      <span>GIS Mapping</span>
-    </Link>
-    <Link href="/admin/employability" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/employability') }">
-      <i class="fas fa-chart-line"></i>
-      <span>Employability Index</span>
-    </Link>
-  </div>
+    <!-- Reports Section -->
+    <div class="nav-group">
+      <div class="nav-title">Reports</div>
+      <Link href="/reports/graduate-profiles" class="nav-item" :class="{ 'active': $page.url.startsWith('/reports/graduate-profiles') }">
+        <i class="fas fa-id-card"></i> <!-- Changed from fa-user-graduate to fa-id-card (better for profiles) -->
+        <span>Graduate Profiles</span>
+      </Link>
+      <Link href="/reports/advancement" class="nav-item" :class="{ 'active': $page.url.startsWith('/reports/advancement') }">
+        <i class="fas fa-chart-line"></i> <!-- Changed from fa-arrow-up to fa-chart-line (better for advancement reports) -->
+        <span>Advancement</span>
+      </Link>
+            <Link href="/alumni/import" class="nav-item" :class="{ 'active': $page.url.startsWith('/alumni/import') }">
+        <i class="fas fa-file-import"></i>
+ <!-- Changed from fa-arrow-up to fa-chart-line (better for advancement reports) -->
+        <span>Import Alumni Data</span>
+      </Link>
+    </div>
 
-  <!-- Content Management -->
-  <div class="nav-group">
-    <div class="nav-title">Content</div>
-    <Link href="/admin/success-stories" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/success-stories') }">
-      <i class="fas fa-star"></i>
-      <span>Success Stories</span>
-    </Link>
-    <Link href="/admin/jobs" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/jobs') }">
-      <i class="fas fa-search-dollar"></i>
-      <span>Job Postings</span>
-    </Link>
-    <Link href="/admin/events" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/events') }">
-      <i class="fas fa-calendar-alt"></i>
-      <span>Events</span>
-    </Link>
-  </div>
+    <!-- GIS & Analytics -->
+    <div class="nav-group">
+      <div class="nav-title">Analytics</div>
+      <Link href="/admin/mapping" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/mapping') }">
+        <i class="fas fa-map"></i> <!-- Changed from fa-map-marked-alt to fa-map (simpler map icon) -->
+        <span>GIS Mapping</span>
+      </Link>
+      <Link href="/admin/employability" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/employability') }">
+        <i class="fas fa-chart-pie"></i> <!-- Changed from fa-chart-line to fa-chart-pie (better for index visualization) -->
+        <span>Employability Index</span>
+      </Link>
+    </div>
 
-  <!-- System -->
-  <div class="nav-group">
-    <div class="nav-title">System</div>
-    <Link href="/admin/settings" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/settings') }">
-      <i class="fas fa-cog"></i>
-      <span>Settings</span>
-    </Link>
-    <Link href="/admin/users" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/users') }">
-      <i class="fas fa-user-shield"></i>
-      <span>Admin Users</span>
-    </Link>
-  </div>
-</nav>
-    </aside>
+    <!-- Content Management -->
+    <div class="nav-group">
+      <div class="nav-title">Content</div>
+      <Link href="/admin/success-stories" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/success-stories') }">
+        <i class="fas fa-trophy"></i> <!-- Changed from fa-star to fa-trophy (better for success stories) -->
+        <span>Success Stories</span>
+      </Link>
+      <Link href="/admin/jobs" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/jobs') }">
+        <i class="fas fa-bullhorn"></i> <!-- Changed from fa-search-dollar to fa-bullhorn (better for job postings) -->
+        <span>Job Postings</span>
+      </Link>
+      <Link href="/admin/events" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/events') }">
+        <i class="fas fa-calendar-check"></i> <!-- Changed from fa-calendar-alt to fa-calendar-check (more event-like) -->
+        <span>Events</span>
+      </Link>
+    </div>
 
+    <!-- System -->
+    <div class="nav-group">
+      <div class="nav-title">System</div>
+      <Link href="/admin/settings" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/settings') }">
+        <i class="fas fa-sliders-h"></i> <!-- Changed from fa-cog to fa-sliders-h (more settings-like) -->
+        <span>Settings</span>
+      </Link>
+      <Link href="/admin/users" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/users') }">
+        <i class="fas fa-users-cog"></i> <!-- Changed from fa-user-shield to fa-users-cog (better for admin users) -->
+        <span>Admin Users</span>
+      </Link>
+      <Link href="/admin/login-attempts" class="nav-item" :class="{ 'active': $page.url.startsWith('/admin/login-attempts') }">
+        <i class="fas fa-shield-alt"></i> <!-- Changed from fa-user-shield to fa-shield-alt (better for login security) -->
+        <span>Login Security</span>
+      </Link>
+    </div>
+  </nav>
+</aside>
     <!-- Main Content -->
     <div class="main-content">
       <header class="header">
         <h1 class="page-title">{{ title }}</h1>
         <div class="user-menu">
-          <div class="search-bar">
+          <!-- <div class="search-bar">
             <i class="fas fa-search"></i>
             <input type="text" placeholder="Search...">
-          </div>
-          <div class="user-profile">
+          </div> -->
+          <div class="user-profile" v-if="user">
             <img :src="user.avatar" class="user-avatar" alt="Profile">
             <span>{{ user.name }}</span>
             <button @click="logout" class="action-btn ml-2" title="Logout">
@@ -741,4 +745,14 @@ const user = computed(() => usePage().props.auth.user)
 function logout() {
   router.post('/admin/logout')
 }
+const themeColors = computed(() => usePage().props.themeColors || {
+    primary: '#ff8c00',
+    primary_light: 'rgba(255, 140, 0, 0.1)',
+    text_primary: '#ffffff',
+    text_secondary: '#cccccc',
+    bg_dark: '#1a1a1a',
+    bg_darker: '#121212',
+    card_bg: 'rgba(40, 40, 40, 0.7)',
+    card_border: 'rgba(255, 255, 255, 0.1)'
+});
 </script>

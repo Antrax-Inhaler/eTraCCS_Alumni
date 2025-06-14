@@ -143,6 +143,9 @@ const openEditModal = (alum) => {
                     <tbody>
                         <tr v-for="alum in alumni.data" :key="alum.id">
                             <td>
+                                <Link :href="route('admin.alumni.show', alum.encrypted_id)">
+    {{ alum.first_name }} {{ alum.last_name }}
+</Link>
                                 <div class="user-cell">
                                     <img :src="alum.profile_photo_url" class="user-avatar" alt="Profile">
                                     <div>

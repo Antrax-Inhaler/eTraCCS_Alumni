@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Fortify\Contracts\CreatesNewUsers;
 use Laravel\Jetstream\Jetstream;
-
+use Illuminate\Validation\Rule; 
 class CreateNewUser implements CreatesNewUsers
 {
     use PasswordValidationRules;
@@ -29,32 +29,32 @@ class CreateNewUser implements CreatesNewUsers
             'password' => $this->passwordRules(),
             'password_confirmation' => ['required', 'string', 'same:password'],
             'terms' => Jetstream::hasTermsAndPrivacyPolicyFeature() ? ['accepted', 'required'] : '',
+            'gender' => ['required', 'string', Rule::in(['male', 'female', 'other'])], // Add gender validation
         ];
-        
-
+    
         // Add validation for profile photo if present
         if (isset($input['profile_photo_path'])) {
             $validationRules['profile_photo_path'] = ['nullable', 'image', 'max:2048']; // 2MB max
         }
-
+    
         // Add validation for cover photo if present
         if (isset($input['cover_photo'])) {
             $validationRules['cover_photo'] = ['nullable', 'image', 'max:5120']; // 5MB max
         }
-
+    
         Validator::make($input, $validationRules)->validate();
-
+    
         // Handle file uploads
         $profilePhotoPath = null;
         if (isset($input['profile_photo_path'])) {
             $profilePhotoPath = $input['profile_photo_path']->store('profile-photos', 'public');
         }
-
+    
         $coverPhotoPath = null;
         if (isset($input['cover_photo'])) {
             $coverPhotoPath = $input['cover_photo']->store('cover-photos', 'public');
         }
-
+    
         return User::create([
             'name' => $input['name'],
             'first_name' => $input['first_name'],
@@ -64,6 +64,7 @@ class CreateNewUser implements CreatesNewUsers
             'password' => Hash::make($input['password']),
             'profile_photo_path' => $profilePhotoPath,
             'cover_photo' => $coverPhotoPath,
+            'gender' => $input['gender'], // Save gender to the database
         ]);
     }
 }

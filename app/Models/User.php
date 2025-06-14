@@ -124,6 +124,7 @@ class User extends Authenticatable
     {
         return $this->hasMany(Event::class);
     }
+    
     public function comments()
     {
         return $this->hasMany(Comment::class, 'user_id');
@@ -255,5 +256,20 @@ public function employabilityIndex()
     return $this->hasOne(EmployabilityIndex::class);
 }
 
-
+public function trainingsAttended()
+{
+    return $this->hasMany(TrainingAttended::class, 'user_id');
+}
+public function location()
+{
+    return $this->hasOne(AlumniLocation::class);
+}
+public function jobHuntingExperiences()
+{
+    return $this->hasMany(JobHuntingExperience::class);
+}
+public function unemployedDetails()
+{
+    return $this->hasOne(UnemployedDetail::class);
+}
 }

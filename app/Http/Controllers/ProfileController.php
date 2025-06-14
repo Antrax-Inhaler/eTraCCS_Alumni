@@ -15,11 +15,15 @@ use App\Models\Company;
 use App\Models\Follow;
 use App\Models\Reaction;
 use App\Models\ContentItem;
+use App\Models\JobHuntingDifficulty;
+use App\Models\JobSource;
+use App\Models\JobMaintenanceMethod;
+use App\Models\Competency;
+use Illuminate\Validation\Rule;
+
 use App\Models\UserViewHistory;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Auth;
-
-
 class ProfileController extends Controller
 {
     // Fetch all profile data for the authenticated user
@@ -30,7 +34,7 @@ class ProfileController extends Controller
             $user = User::with([
                 'educationalBackgrounds',
                 'professionalExams',
-                'trainingAttendeds',
+                'trainingsAttended',
                 'employmentHistory.company',
                 'alumniLocation',
                 'contentItems.mediaFiles',
@@ -117,7 +121,7 @@ class ProfileController extends Controller
                     'name' => $user->name,
                     'email' => $user->email,
                     'first_name' => $user->first_name,
-                    'cover_photo' => $user->cover_photo,
+                       'cover_photo' => $user->cover_photo ? asset('storage/' . $user->cover_photo) : null,
                     'last_name' => $user->last_name,
                     'middle_initial' => $user->middle_initial,
                     'profile_photo_url' => $user->profile_photo_url,
@@ -131,7 +135,7 @@ class ProfileController extends Controller
                 'auth_user_id' => auth()->id(),
                 'educationalBackgrounds' => $user->educationalBackgrounds,
                 'professionalExams' => $user->professionalExams,
-                'trainingAttendeds' => $user->trainingsAttended,
+'trainingsAttended' => $user->trainingsAttended,
                 'employmentHistory' => $user->employmentHistory->map(function ($history) {
                     return [
                         'id' => $history->id,
@@ -392,61 +396,91 @@ public function getCompanySuggestions(Request $request)
     return response()->json($companies);
 }
     // Add or Update Educational Background
-    public function storeEducationalBackground(Request $request, $encryptedId)
+    public function storeEducationalBackground(Request $request)
     {
-        try {
-            // Decrypt the user ID
-            $id = Crypt::decryptString($encryptedId);
+        $validated = $request->validate([
+            'degree_earned' => 'required|string|max:255',
+            'institution' => 'required|string|max:255',
+            'campus' => 'nullable|string|max:255',
+            'year_graduated' => 'nullable|integer|min:1900|max:' . (now()->year + 5),
+            'from_mindoro_state' => 'boolean',
+            'is_primary' => 'boolean',
+            'currently_studying' => 'boolean',
+            'is_graduate_study' => 'boolean',
+            'reason_for_study' => 'nullable|in:' . implode(',', array_keys(EducationalBackground::REASONS)),
+            'other_reason' => 'nullable|string|max:255',
+            'college' => 'nullable|string|max:255'
+        ]);
     
-            // Fetch the user
-            $user = User::findOrFail($id);
-    
-            // Validate the request
-            $request->validate([
-                'degree_earned' => 'required|string|max:255',
-                'institution' => 'required|string|max:255',
-                'campus' => 'nullable|string|max:255',
-                'year_graduated' => 'required|integer|min:1900|max:' . now()->year,
-            ]);
-    
-            // Create the educational background for the user
-            $user->educationalBackgrounds()->create($request->all());
-    
-            return redirect()->back()->with('success', 'Educational background added!');
-        } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
-            abort(404, 'Invalid or tampered data');
+        // Handle currently studying logic
+        if ($validated['currently_studying'] ?? false) {
+            $validated['year_graduated'] = null;
         }
+    
+        // Handle graduate study logic
+        if (!($validated['is_graduate_study'] ?? false)) {
+            $validated['reason_for_study'] = null;
+            $validated['other_reason'] = null;
+        }
+    
+        // Ensure only Mindoro State degrees can be primary
+        if (($validated['is_primary'] ?? false) && !($validated['from_mindoro_state'] ?? false)) {
+            return redirect()->back()
+                ->with('error', 'Only Mindoro State University degrees can be marked as primary')
+                ->withInput();
+        }
+    
+        // Directly attach to the currently authenticated user
+        auth()->user()->educationalBackgrounds()->create($validated);
+    
+        return redirect()->back()->with('success', 'Educational background added!');
     }
-    public function updateEducationalBackground(Request $request, $encryptedId, EducationalBackground $background)
+    
+    public function updateEducationalBackground(Request $request, EducationalBackground $background)
     {
-        try {
-            // Decrypt the user ID
-            $id = Crypt::decryptString($encryptedId);
-    
-            // Fetch the user
-            $user = User::findOrFail($id);
-    
-            // Ensure the educational background belongs to the user
-            if ($background->user_id !== $user->id) {
-                abort(403, 'Unauthorized action');
-            }
-    
-            // Validate the request
-            $request->validate([
-                'degree_earned' => 'required|string|max:255',
-                'institution' => 'required|string|max:255',
-                'campus' => 'nullable|string|max:255',
-                'year_graduated' => 'required|integer|min:1900|max:' . now()->year,
-            ]);
-    
-            // Update the educational background
-            $background->update($request->all());
-    
-            return redirect()->back()->with('success', 'Educational background updated!');
-        } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
-            abort(404, 'Invalid or tampered data');
+        // Ensure the authenticated user owns the educational background
+        if ($background->user_id !== auth()->id()) {
+            abort(403, 'Unauthorized action');
         }
+    
+        $validated = $request->validate([
+            'degree_earned' => 'required|string|max:255',
+            'institution' => 'required|string|max:255',
+            'campus' => 'nullable|string|max:255',
+            'year_graduated' => 'nullable|integer|min:1900|max:' . (now()->year + 5),
+            'from_mindoro_state' => 'boolean',
+            'is_primary' => 'boolean',
+            'currently_studying' => 'boolean',
+            'is_graduate_study' => 'boolean',
+            'reason_for_study' => 'nullable|in:' . implode(',', array_keys(EducationalBackground::REASONS)),
+            'other_reason' => 'nullable|string|max:255',
+            'college' => 'nullable|string|max:255'
+        ]);
+    
+        // Handle currently studying logic
+        if ($validated['currently_studying'] ?? false) {
+            $validated['year_graduated'] = null;
+        }
+    
+        // Handle graduate study logic
+        if (!($validated['is_graduate_study'] ?? false)) {
+            $validated['reason_for_study'] = null;
+            $validated['other_reason'] = null;
+        }
+    
+        // Ensure only Mindoro State degrees can be primary
+        if (($validated['is_primary'] ?? false) && !($validated['from_mindoro_state'] ?? false)) {
+            return redirect()->back()
+                ->with('error', 'Only Mindoro State University degrees can be marked as primary')
+                ->withInput();
+        }
+    
+        // Update the background
+        $background->update($validated);
+    
+        return redirect()->back()->with('success', 'Educational background updated!');
     }
+    
     private function getFullName($user): string
     {
         return trim(implode(' ', [
@@ -462,28 +496,19 @@ public function getCompanySuggestions(Request $request)
         return $user->last_seen_at && $user->last_seen_at->gt(now()->subMinutes(5));
     }
 
-    public function destroyEducationalBackground($encryptedId, EducationalBackground $background)
+    public function destroyEducationalBackground(EducationalBackground $background)
     {
-        try {
-            // Decrypt the user ID
-            $id = Crypt::decryptString($encryptedId);
-    
-            // Fetch the user
-            $user = User::findOrFail($id);
-    
-            // Ensure the educational background belongs to the user
-            if ($background->user_id !== $user->id) {
-                abort(403, 'Unauthorized action');
-            }
-    
-            // Delete the educational background
-            $background->delete();
-    
-            return redirect()->back()->with('success', 'Educational background deleted!');
-        } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
-            abort(404, 'Invalid or tampered data');
+        // Ensure the authenticated user owns the educational background
+        if ($background->user_id !== auth()->id()) {
+            abort(403, 'Unauthorized action');
         }
+    
+        // Delete the educational background
+        $background->delete();
+    
+        return redirect()->back()->with('success', 'Educational background deleted!');
     }
+    
     public function educationalBackgroundIndex($encryptedId)
     {
         try {
@@ -521,65 +546,160 @@ public function storeEmploymentHistory(Request $request)
         'job_title' => 'required|string|max:255',
         'start_date' => 'required|date',
         'end_date' => 'nullable|date|after_or_equal:start_date',
-        'latitude' => 'nullable|numeric',
-        'longitude' => 'nullable|numeric',
+        'employment_type' => 'required|in:full-time,part-time,contract,internship,freelance',
         'industry' => 'nullable|string|max:255',
         'is_first_job' => 'boolean',
-        'months_to_first_job' => 'nullable|integer|min:0'
+        'months_to_first_job' => 'nullable|integer',
+        'current_salary' => 'nullable|in:below_10k,10k-20k,20k-30k,30k-50k,above_50k',
+        'job_source' => 'nullable|in:online_portals,walk_in,referral,university_fair,social_media,government,other',
+        'other_source' => 'nullable|string|max:100',
+        'difficulties' => 'nullable|array',
+        'difficulties.*' => 'string|in:lack_of_opportunities,high_competition,qualification_mismatch,lack_of_experience,personal_issues,other',
+        'other_difficulty' => 'nullable|string|max:255',
+        'curriculum_relevance' => 'nullable|integer|min:1|max:4',
+        'latitude' => 'nullable|numeric',
+        'longitude' => 'nullable|numeric',
+        'country' => 'nullable|string|max:100',
+        'city' => 'nullable|string|max:100',
+        'province' => 'nullable|string|max:255',
+        'region' => 'nullable|string|max:255',
+        'barangay' => 'nullable|string|max:255',
+        // Convert arrays to comma-separated strings
+        'job_maintenance' => 'nullable|string',
+        'competencies' => 'nullable|string',
+        'nature_of_industry' => 'required|string|max:255'
     ]);
 
     // Find or create company
-    $company = Company::firstOrCreate(
+    $company = Company::updateOrCreate(
         ['name' => $validated['company_name']],
         [
-            'latitude' => $validated['latitude'],
-            'longitude' => $validated['longitude'],
-            'industry' => $validated['industry']
+            'industry' => $validated['industry'] ?? null,
+            'latitude' => $validated['latitude'] ?? null,
+            'longitude' => $validated['longitude'] ?? null,
+            'country' => $validated['country'] ?? null,
+            'city' => $validated['city'] ?? null,
+            'province' => $validated['province'] ?? null,
+            'region' => $validated['region'] ?? null,
+            'barangay' => $validated['barangay'] ?? null
         ]
     );
 
-    // Create employment history
-    auth()->user()->employmentHistories()->create([
+    // Prepare employment data
+    $employmentData = [
         'company_id' => $company->id,
         'job_title' => $validated['job_title'],
+        'nature_of_industry' => $validated['nature_of_industry'],
         'start_date' => $validated['start_date'],
-        'end_date' => $validated['end_date'],
+        'end_date' => $validated['end_date'] ?? null,
+        'employment_type' => $validated['employment_type'],
+        'industry' => $validated['industry'] ?? null,
         'is_first_job' => $validated['is_first_job'] ?? false,
-        'months_to_first_job' => $validated['months_to_first_job'],
-        'employment_type' => 'full-time' // Default or from form
-    ]);
+        'months_to_first_job' => $validated['months_to_first_job'] ?? null,
+        'current_salary' => $validated['current_salary'] ?? null,
+        'job_source' => $validated['job_source'] ?? null,
+        'other_source' => $validated['other_source'] ?? null,
+        'difficulties' => isset($validated['difficulties']) ? implode(',', $validated['difficulties']) : null,
+        'other_difficulty' => $validated['other_difficulty'] ?? null,
+        'curriculum_relevance' => $validated['curriculum_relevance'] ?? false,
+        // Convert arrays to comma-separated strings
+        'job_maintenance' => is_array($request->job_maintenance) ? implode(',', $request->job_maintenance) : $request->job_maintenance,
+        'competencies' => is_array($request->competencies) ? implode(',', $request->competencies) : $request->competencies
+    ];
+
+    // Create employment history
+    auth()->user()->employmentHistories()->create($employmentData);
 
     return redirect()->back()->with('success', 'Employment history saved!');
 }
 public function updateEmploymentHistory(Request $request, EmploymentHistory $history)
 {
-    $request->validate([
+    $validated = $request->validate([
         'company_name' => 'required|string|max:255',
         'job_title' => 'required|string|max:255',
         'start_date' => 'required|date',
         'end_date' => 'nullable|date|after_or_equal:start_date',
-        'latitude' => 'nullable|numeric', // Optional for new companies
-        'longitude' => 'nullable|numeric', // Optional for new companies
-        'industry' => 'nullable|string|max:255', // Optional for new companies
+        'latitude' => 'nullable|numeric',
+        'longitude' => 'nullable|numeric',
+        'industry' => 'nullable|string|max:255',
+        'is_first_job' => 'boolean',
+        'months_to_first_job' => 'nullable|in:less_than_1,1_to_3,4_to_6,7_to_12,more_than_1,never',
+        'first_job_salary' => 'nullable|in:below_10k,10k-15k,15k-20k,20k-30k,above_30k',
+        'job_source' => 'nullable|in:online_portals,walk_in,referral,university_fair,social_media,government,other',
+        'other_source' => 'nullable|string|max:255',
+        'difficulties' => 'nullable|array',
+        'difficulties.*' => 'string|in:lack_of_opportunities,high_competition,qualification_mismatch,lack_of_experience,personal_issues,other',
+        'other_difficulty' => 'nullable|string|max:255',
+        'employment_status' => 'nullable|in:permanent,contractual,project-based,probationary,part-time,freelance,other',
+        'employer_type' => 'nullable|in:government,private,self-employed,ngo,other',
+        'current_salary' => [
+            'nullable',
+            Rule::in(['below_10k', '10k-15k', '15k-20k', '20k-30k', 'above_30k', '10k-20k', '20k-30k', '30k-50k', 'above_50k'])
+        ],        'job_maintenance' => 'nullable|array',
+        'job_maintenance.*' => 'string|in:skills_from_college,on_the_job_training,certifications,self_learning,graduate_studies,company_training',
+        'has_promotion' => 'boolean',
+        'has_awards' => 'boolean',
+        'awards_details' => 'nullable|string|max:500',
+        'unemployment_reason' => 'nullable|in:seeking,studying,family,health,not_interested,other',
+        'other_unemployment_reason' => 'nullable|string|max:255',
+        'competencies' => 'nullable|array',
+        'competencies.*' => 'string|in:programming,networking,database,project_management,communication,problem_solving,research,multimedia,other',
+        'curriculum_relevance' => 'nullable|in:very_relevant,relevant,somewhat_relevant,not_relevant',
+        'program_suggestions' => 'nullable|array',
+        'program_suggestions.*' => 'string|in:industry_aligned,hands_on,updated_tools,stronger_internship,cert_prep,career_services,other',
+        'other_suggestion' => 'nullable|string|max:255',
+        'country' => 'nullable|string|max:100',
+        'city' => 'nullable|string|max:100',
+        'province' => 'nullable|string|max:255',
+        'region' => 'nullable|string|max:255',
+        'barangay' => 'nullable|string|max:255'
     ]);
 
-    // Find or create the company
-    $company = Company::firstOrCreate(
-        ['name' => $request->company_name],
+    // Find or create company
+    $company = Company::updateOrCreate(
+        ['name' => $validated['company_name']],
         [
-            'latitude' => $request->latitude,
-            'longitude' => $request->longitude,
-            'industry' => $request->industry,
+            'latitude' => $validated['latitude'],
+            'longitude' => $validated['longitude'],
+            'industry' => $validated['industry'],
+            'country' => $validated['country'] ?? null,
+            'city' => $validated['city'] ?? null,
+            'province' => $validated['province'] ?? null,
+            'region' => $validated['region'] ?? null,
+            'barangay' => $validated['barangay'] ?? null
         ]
     );
 
-    // Update the employment history record
-    $history->update([
+    // Prepare update data
+    $updateData = [
         'company_id' => $company->id,
-        'job_title' => $request->job_title,
-        'start_date' => $request->start_date,
-        'end_date' => $request->end_date,
-    ]);
+        'job_title' => $validated['job_title'],
+        'start_date' => $validated['start_date'],
+        'end_date' => $validated['end_date'],
+        'is_first_job' => $validated['is_first_job'] ?? false,
+        'months_to_first_job' => $validated['months_to_first_job'] ?? null,
+        'first_job_salary' => $validated['first_job_salary'] ?? null,
+        'job_source' => $validated['job_source'] ?? null,
+        'other_source' => $validated['other_source'] ?? null,
+        'difficulties' => $validated['difficulties'] ? implode(',', $validated['difficulties']) : null,
+        'other_difficulty' => $validated['other_difficulty'] ?? null,
+        'employment_status' => $validated['employment_status'] ?? null,
+        'employer_type' => $validated['employer_type'] ?? null,
+        'current_salary' => $validated['current_salary'] ?? null,
+        'job_maintenance' => $validated['job_maintenance'] ? implode(',', $validated['job_maintenance']) : null,
+        'has_promotion' => $validated['has_promotion'] ?? false,
+        'has_awards' => $validated['has_awards'] ?? false,
+        'awards_details' => $validated['awards_details'] ?? null,
+        'unemployment_reason' => $validated['unemployment_reason'] ?? null,
+        'other_unemployment_reason' => $validated['other_unemployment_reason'] ?? null,
+        'competencies' => $validated['competencies'] ? implode(',', $validated['competencies']) : null,
+        'curriculum_relevance' => $validated['curriculum_relevance'] ?? null,
+        'program_suggestions' => $validated['program_suggestions'] ? implode(',', $validated['program_suggestions']) : null,
+        'other_suggestion' => $validated['other_suggestion'] ?? null
+    ];
+
+    // Update employment history
+    $history->update($updateData);
 
     return redirect()->back()->with('success', 'Employment history updated!');
 }
@@ -596,7 +716,12 @@ public function updateEmploymentHistory(Request $request, EmploymentHistory $his
         try {
             // Get the authenticated user with related employment histories and companies
             $user = auth()->user()->load([
-                'employmentHistories.company' // Include company relationship
+                'employmentHistories' => function($query) {
+                    $query->with(['company' => function($q) {
+                        $q->select('id', 'name', 'industry', 'latitude', 'longitude', 
+                                  'country', 'city', 'province', 'region', 'barangay');
+                    }]);
+                }
             ]);
     
             // Separate current and past employment
@@ -621,19 +746,72 @@ public function updateEmploymentHistory(Request $request, EmploymentHistory $his
                     'latitude' => $company->latitude,
                     'longitude' => $company->longitude,
                     'industry' => $company->industry,
+                    'country' => $company->country,
+                    'city' => $company->city,
+                    'province' => $company->province,
+                    'region' => $company->region,
+                    'barangay' => $company->barangay,
                     'users' => $company->employmentHistories->map(function($history) {
                         return [
                             'id' => $history->user->id,
-                            'encrypted_id' => encrypt($history->user->id),
                             'full_name' => trim("{$history->user->first_name} {$history->user->middle_initial} {$history->user->last_name}"),
                             'profile_photo_url' => $history->user->profile_photo_url
                         ];
                     })->filter()
                 ];
             });
+    
+            // Get all reference data for the form
+            $jobHuntingDifficulties = JobHuntingDifficulty::all(['id', 'name']);
+            $jobSources = JobSource::all(['id', 'name']);
+            $jobMaintenanceMethods = JobMaintenanceMethod::all(['id', 'name']);
+            $competencies = Competency::all(['id', 'name']);
+    
+            // Salary range options
+            $salaryRanges = [
+                'below_10k' => 'Below ₱10,000',
+                '10k-15k' => '₱10,000–₱15,000',
+                '15k-20k' => '₱15,001–₱20,000',
+                '20k-30k' => '₱20,001–₱30,000',
+                'above_30k' => 'Above ₱30,000',
+                '10k-20k' => '₱10,000–₱20,000',
+                '20k-30k' => '₱20,001–₱30,000',
+                '30k-50k' => '₱30,001–₱50,000',
+                'above_50k' => 'Above ₱50,000'
+            ];
+    
+            // Employment status options
+            $employmentStatuses = [
+                'permanent' => 'Permanent',
+                'contractual' => 'Contractual',
+                'project-based' => 'Project-based',
+                'probationary' => 'Probationary',
+                'part-time' => 'Part-time',
+                'freelance' => 'Freelance',
+                'other' => 'Other'
+            ];
+    
+            // Employer type options
+            $employerTypes = [
+                'government' => 'Government',
+                'private' => 'Private',
+                'self-employed' => 'Self-employed',
+                'ngo' => 'Non-profit/NGO',
+                'other' => 'Other'
+            ];
+    
+            // Curriculum relevance options
+            $curriculumRelevance = [
+                'very_relevant' => 'Very relevant',
+                'relevant' => 'Relevant',
+                'somewhat_relevant' => 'Somewhat relevant',
+                'not_relevant' => 'Not relevant at all'
+            ];
+    
             // Format employment histories for the frontend
             $formattedCurrentEmployment = $currentEmployment ? [
                 'id' => $currentEmployment->id,
+                'company_id' => $currentEmployment->company_id,
                 'company_name' => $currentEmployment->company ? $currentEmployment->company->name : null,
                 'job_title' => $currentEmployment->job_title,
                 'start_date' => $currentEmployment->start_date,
@@ -642,11 +820,29 @@ public function updateEmploymentHistory(Request $request, EmploymentHistory $his
                 'industry' => $currentEmployment->company ? $currentEmployment->company->industry : null,
                 'is_first_job' => $currentEmployment->is_first_job,
                 'months_to_first_job' => $currentEmployment->months_to_first_job,
+                'first_job_salary' => $currentEmployment->first_job_salary,
+                'job_source' => $currentEmployment->job_source,
+                'other_source' => $currentEmployment->other_source,
+                'difficulties' => $currentEmployment->difficulties ? explode(',', $currentEmployment->difficulties) : [],
+                'other_difficulty' => $currentEmployment->other_difficulty,
+                'employment_status' => $currentEmployment->employment_status,
+                'employer_type' => $currentEmployment->employer_type,
+                'current_salary' => $currentEmployment->current_salary,
+                'job_maintenance' => $currentEmployment->job_maintenance ? explode(',', $currentEmployment->job_maintenance) : [],
+                'has_promotion' => $currentEmployment->has_promotion,
+                'has_awards' => $currentEmployment->has_awards,
+                'awards_details' => $currentEmployment->awards_details,
+                'competencies' => $currentEmployment->competencies ? explode(',', $currentEmployment->competencies) : [],
+                'curriculum_relevance' => $currentEmployment->curriculum_relevance,
+                'program_suggestions' => $currentEmployment->program_suggestions ? explode(',', $currentEmployment->program_suggestions) : [],
+                'other_suggestion' => $currentEmployment->other_suggestion,
+                'company' => $currentEmployment->company
             ] : null;
     
             $formattedPastEmployment = $pastEmployment->map(function ($job) {
                 return [
                     'id' => $job->id,
+                    'company_id' => $job->company_id,
                     'company_name' => $job->company ? $job->company->name : null,
                     'job_title' => $job->job_title,
                     'start_date' => $job->start_date,
@@ -655,6 +851,25 @@ public function updateEmploymentHistory(Request $request, EmploymentHistory $his
                     'industry' => $job->company ? $job->company->industry : null,
                     'is_first_job' => $job->is_first_job,
                     'months_to_first_job' => $job->months_to_first_job,
+                    'first_job_salary' => $job->first_job_salary,
+                    'job_source' => $job->job_source,
+                    'other_source' => $job->other_source,
+                    'difficulties' => $job->difficulties ? explode(',', $job->difficulties) : [],
+                    'other_difficulty' => $job->other_difficulty,
+                    'employment_status' => $job->employment_status,
+                    'employer_type' => $job->employer_type,
+                    'current_salary' => $job->current_salary,
+                    'job_maintenance' => $job->job_maintenance ? explode(',', $job->job_maintenance) : [],
+                    'has_promotion' => $job->has_promotion,
+                    'has_awards' => $job->has_awards,
+                    'awards_details' => $job->awards_details,
+                    'unemployment_reason' => $job->unemployment_reason,
+                    'other_unemployment_reason' => $job->other_unemployment_reason,
+                    'competencies' => $job->competencies ? explode(',', $job->competencies) : [],
+                    'curriculum_relevance' => $job->curriculum_relevance,
+                    'program_suggestions' => $job->program_suggestions ? explode(',', $job->program_suggestions) : [],
+                    'other_suggestion' => $job->other_suggestion,
+                    'company' => $job->company
                 ];
             });
     
@@ -664,6 +879,16 @@ public function updateEmploymentHistory(Request $request, EmploymentHistory $his
                 'pastEmployment' => $formattedPastEmployment,
                 'companyLocations' => $companyLocations,
                 'employmentHistories' => $user->employmentHistories,
+                'companies' => $companies,
+                'user' => $user->only(['id', 'first_name', 'middle_initial', 'last_name', 'profile_photo_url']),
+                'jobHuntingDifficulties' => $jobHuntingDifficulties,
+                'jobSources' => $jobSources,
+                'salaryRanges' => $salaryRanges,
+                'employmentStatuses' => $employmentStatuses,
+                'employerTypes' => $employerTypes,
+                'jobMaintenanceMethods' => $jobMaintenanceMethods,
+                'competencies' => $competencies,
+                'curriculumRelevance' => $curriculumRelevance,
             ]);
         } catch (\Exception $e) {
             // Log the error for debugging

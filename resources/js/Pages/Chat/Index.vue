@@ -342,8 +342,22 @@ const fetchConversations = async () => {
             params: { page: currentPage.value },
         });
 
-        // Append new conversations to the existing list
-        conversations.value = [...conversations.value, ...response.data.data];
+        // Create a map of existing conversations for quick lookup
+        const existingConversationsMap = new Map(
+            conversations.value.map(conv => [conv.id, conv])
+        );
+
+        // Merge new conversations, updating existing ones
+        response.data.data.forEach(newConv => {
+            existingConversationsMap.set(newConv.id, {
+                ...existingConversationsMap.get(newConv.id),
+                ...newConv
+            });
+        });
+
+        // Convert back to array
+        conversations.value = Array.from(existingConversationsMap.values())
+            .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
 
         // Update pagination metadata
         hasMoreConversations.value = response.data.pagination.has_more;
@@ -351,7 +365,6 @@ const fetchConversations = async () => {
         console.error('Error fetching conversations:', error.response?.data || error.message);
     }
 };
-
 const fetchUserData = async () => {
     try {
         const response = await axios.get('/api/user'); // Adjust the endpoint if needed
@@ -390,27 +403,29 @@ const createGroupChat = async () => {
     try {
         const formData = new FormData();
         formData.append('name', newGroupName.value);
-        formData.append('participants', JSON.stringify(selectedParticipants.value.map((p) => p.id)));
+        formData.append('participants', JSON.stringify(selectedParticipants.value.map(p => p.id)));
 
-        // Append the profile picture if one is selected
         if (profilePicture.value) {
             formData.append('profile_picture', profilePicture.value);
         }
 
         const response = await axios.post('/api/chat/group', formData, {
             headers: {
-                'Content-Type': 'multipart/form-data', // Required for file uploads
+                'Content-Type': 'multipart/form-data',
             },
         });
 
-        // Add the new group chat to the conversation list
-        conversations.value.unshift(response.data);
+        // Add the new group chat to the beginning of the conversation list
+        conversations.value = [response.data, ...conversations.value];
 
-        // Close the modal
+        // Reset form and close modal
         showCreateGroupModal.value = false;
         newGroupName.value = '';
         selectedParticipants.value = [];
-        profilePicture.value = null; // Reset the profile picture state
+        profilePicture.value = null;
+        
+        // Select the new conversation
+        await selectConversation(response.data);
     } catch (error) {
         console.error('Error creating group chat:', error.response?.data || error.message);
     }
@@ -455,14 +470,40 @@ const createGroupChat = async () => {
 // };
 const fetchMessages = async (conversationId, append = false) => {
     try {
-        const response = await axios.get(`/api/conversations/${conversationId}/messages`);
+        const response = await axios.get(`/api/conversations/${conversationId}/messages`, {
+            params: { 
+                page: append ? messagePagination.value.current_page + 1 : 1 
+            }
+        });
         
-        messages.value = response.data.data;
+        if (append) {
+            // For pagination, prepend older messages
+            messages.value = [...response.data.data, ...messages.value];
+        } else {
+            // For initial load, replace all messages
+            messages.value = response.data.data;
+        }
+        
         lastMessageId.value = messages.value.length > 0 
             ? messages.value[messages.value.length - 1].id 
             : null;
             
         messagePagination.value = response.data.pagination;
+        
+        // Scroll to appropriate position
+        if (append) {
+            // Maintain scroll position when loading older messages
+            const container = document.querySelector('.messages');
+            if (container) {
+                const scrollHeightBefore = container.scrollHeight;
+                setTimeout(() => {
+                    container.scrollTop = container.scrollHeight - scrollHeightBefore;
+                }, 0);
+            }
+        } else {
+            // Scroll to bottom for new conversation
+            scrollToBottom();
+        }
     } catch (error) {
         console.error('Error fetching messages:', error);
     }
@@ -587,39 +628,48 @@ const canRemoveParticipant = (userId) => {
     );
 };
 const selectConversation = async (conversation) => {
-  stopPolling();
+    stopPolling();
 
-    selectedConversation.value = conversation;
+    // Find the most up-to-date version of this conversation
+    const updatedConversation = conversations.value.find(c => c.id === conversation.id) || conversation;
+    
+    selectedConversation.value = updatedConversation;
+    localStorage.setItem('selectedConversationId', updatedConversation.id);
 
-    // Save the selected conversation ID to localStorage
-    localStorage.setItem('selectedConversationId', conversation.id);
+    // Reset messages for this conversation
+    messages.value = [];
+    await fetchMessages(updatedConversation.id);
 
-    // Reset pagination for messages
-    messagePagination.value = {};
-    await fetchMessages(conversation.id);
-
-    // Mark messages as delivered if they are not already
+    // Mark messages as delivered if needed
     const undeliveredMessageIds = messages.value
-        .filter((msg) => msg.status === 'sent' && msg.sender_id !== user.value.id)
-        .map((msg) => msg.id);
+        .filter(msg => msg.status === 'sent' && msg.sender_id !== user.value.id)
+        .map(msg => msg.id);
 
     if (undeliveredMessageIds.length > 0) {
-        await markMessagesAsDelivered(conversation.id, undeliveredMessageIds);
+        await markMessagesAsDelivered(updatedConversation.id, undeliveredMessageIds);
     }
 
-    // Fetch group details if it's a group chat
-    if (conversation.type === 'group') {
+    // Fetch group details if needed
+    if (updatedConversation.type === 'group') {
         try {
-            const response = await axios.get(`/api/conversations/${conversation.id}`);
+            const response = await axios.get(`/api/conversations/${updatedConversation.id}`);
+            // Update both the selected conversation and the one in the list
             selectedConversation.value = response.data;
+            updateConversationInList(response.data);
         } catch (error) {
             console.error('Error fetching group details:', error);
         }
     }
+    
     startPolling();
-
 };
 
+const updateConversationInList = (updatedConversation) => {
+    const index = conversations.value.findIndex(c => c.id === updatedConversation.id);
+    if (index !== -1) {
+        conversations.value[index] = updatedConversation;
+    }
+};
 const stopPolling = () => {
     clearInterval(pollingInterval.value);
     isPollingActive.value = false;
@@ -741,37 +791,7 @@ const logout = async () => {
         alert('An error occurred while logging out. Please try again.');
     }
 };
-const longPoll = async () => {
-    if (!selectedConversation.value) return;
-    
-    try {
-        const response = await axios.get('/api/chat/long-poll', {
-            params: {
-                conversation_id: selectedConversation.value.id,
-                last_message_id: lastMessageId.value,
-                timeout: 25000 // 25 seconds
-            },
-            timeout: 30000 // Axios timeout slightly longer than server timeout
-        });
-        
-        if (response.data.messages.length > 0) {
-            messages.value = [...response.data.messages.reverse(), ...messages.value];
-            lastMessageId.value = response.data.last_message_id;
-            
-            // Optional: Play sound for new messages
-            if (messages.value.some(msg => msg.sender_id !== user.value.id)) {
-                playNotificationSound();
-            }
-        }
-        
-        // Immediately start next long poll
-        longPoll();
-    } catch (error) {
-        console.error('Long poll error:', error);
-        // Retry after a delay
-        setTimeout(longPoll, 3000);
-    }
-};
+
 
 // Update startPolling to use longPoll instead
 const startPolling = () => {
@@ -779,18 +799,76 @@ const startPolling = () => {
     isPollingActive.value = true;
     longPoll();
 };
+
+const longPoll = async () => {
+    if (!selectedConversation.value) {
+        isPollingActive.value = false;
+        return;
+    }
+    
+    try {
+        const response = await axios.get('/api/chat/long-poll', {
+            params: {
+                conversation_id: selectedConversation.value.id,
+                last_message_id: lastMessageId.value,
+                timeout: 25000
+            },
+            timeout: 30000
+        });
+        
+        if (response.data.messages.length > 0) {
+            // Filter out any duplicates that might already exist
+            const newMessages = response.data.messages.filter(newMsg => 
+                !messages.value.some(existingMsg => existingMsg.id === newMsg.id)
+            );
+            
+            if (newMessages.length > 0) {
+                messages.value = [...messages.value, ...newMessages];
+                lastMessageId.value = response.data.last_message_id;
+                
+                // Play sound only for messages from others
+                if (newMessages.some(msg => msg.sender_id !== user.value.id)) {
+                    playNotificationSound();
+                }
+                
+                // Update the conversation's latest message in the list
+                const latestMessage = newMessages[newMessages.length - 1];
+                updateConversationLatestMessage(selectedConversation.value.id, latestMessage);
+            }
+        }
+        
+        // Immediately start next long poll if still active
+        if (isPollingActive.value) {
+            longPoll();
+        }
+    } catch (error) {
+        console.error('Long poll error:', error);
+        // Retry after a delay if still active
+        if (isPollingActive.value) {
+            setTimeout(longPoll, 3000);
+        }
+    }
+};
+
+const updateConversationLatestMessage = (conversationId, message) => {
+    const index = conversations.value.findIndex(c => c.id === conversationId);
+    if (index !== -1) {
+        conversations.value[index].latest_message = {
+            content: message.content,
+            sender_name: message.sender_name,
+            created_at: message.created_at
+        };
+        // Also update the selected conversation if it's the same one
+        if (selectedConversation.value?.id === conversationId) {
+            selectedConversation.value.latest_message = conversations.value[index].latest_message;
+        }
+    }
+};
 // Helper Function to Check if a Message Belongs to the Current User
 const isCurrentUser = (senderId) => {
     return senderId === user.value?.id;
 };
-// // Lifecycle Hook
-// onMounted(() => {
-//   fetchConversations();
-//   fetchAvailableUsers(); // Fetch users for group creation
-//   fetchUserData();
-//   fetchUsers();
-  
-// });
+
 const handleProfilePictureUpload = (event) => {
     const file = event.target.files[0];
     if (file) {
@@ -802,17 +880,7 @@ onMounted(async () => {
     await fetchAvailableUsers();
     await fetchUsers();
     await fetchConversations();
-    // Retrieve the saved conversation ID from localStorage
-    // const savedConversationId = localStorage.getItem('selectedConversationId');
-    // if (savedConversationId) {
-    //     const savedConversation = conversations.value.find(
-    //         (conversation) => conversation.id === parseInt(savedConversationId)
-    //     );
 
-    //     if (savedConversation) {
-    //         await selectConversation(savedConversation);
-    //     }
-    // }
     const savedConversationId = localStorage.getItem('selectedConversationId');
     if (savedConversationId) {
         const conversation = conversations.value.find(c => c.id == savedConversationId);
@@ -832,7 +900,6 @@ onMounted(async () => {
         clearInterval(conversationPolling);
     });
 });
-// Watch for Selected Conversation Changes
 watch(selectedConversation, () => {
   if (selectedConversation.value) {
     fetchMessages(selectedConversation.value.id);
@@ -841,20 +908,21 @@ watch(selectedConversation, () => {
 </script>
   
   <style scoped>
+
 /* Base Styles */
 .chat-container {
   display: flex;
   height: 100vh;
   font-family: 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-  background-color: #1a1a1a;
-  color: #e0e0e0;
+  background-color: var(--bg-dark);
+  color: var(--text-primary);
 }
 
 /* Conversation List */
 .conversation-list {
   width: 300px;
-  background-color: #252525;
-  border-right: 1px solid #333;
+  background-color: var(--bg-darker);
+  border-right: 1px solid var(--card-border);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -863,10 +931,10 @@ watch(selectedConversation, () => {
 .conversation-list h3 {
   padding: 15px;
   margin: 0;
-  background-color: #333;
-  color: #fff;
+  background-color: var(--card-bg);
+  color: var(--text-primary);
   font-size: 1.2rem;
-  border-bottom: 1px solid #444;
+  border-bottom: 1px solid var(--card-border);
 }
 
 .conversation-list ul {
@@ -878,7 +946,7 @@ watch(selectedConversation, () => {
 
 .conversation-list li {
   padding: 12px 15px;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--card-border);
   cursor: pointer;
   transition: background-color 0.2s;
   position: relative;
@@ -886,17 +954,17 @@ watch(selectedConversation, () => {
 }
 
 .conversation-list li:hover {
-  background-color: #333;
+  background-color: rgba(255, 255, 255, 0.05);
 }
 
 .conversation-list li.active {
-  background-color: #3a3a3a;
-  border-left: 3px solid #4CAF50;
+  background-color: var(--card-bg);
+  border-left: 3px solid var(--primary);
 }
 
 .latest-message {
   font-size: 0.85rem;
-  color: #aaa;
+  color: var(--text-secondary);
   margin-top: 5px;
   white-space: nowrap;
   overflow: hidden;
@@ -905,21 +973,21 @@ watch(selectedConversation, () => {
 }
 
 .sender-name {
-  color: #4CAF50;
+  color: var(--primary);
   margin-right: 5px;
 }
 
 .timestamp {
   float: right;
   font-size: 0.75rem;
-  color: #777;
+  color: var(--text-secondary);
 }
 
 .unread-indicator {
   position: absolute;
   top: 10px;
   right: 10px;
-  background-color: #4CAF50;
+  background-color: var(--primary);
   color: white;
   border-radius: 50%;
   width: 20px;
@@ -935,16 +1003,16 @@ watch(selectedConversation, () => {
   flex-grow: 1;
   display: flex;
   flex-direction: column;
-  background-color: #1e1e1e;
+  background-color: var(--bg-dark);
 }
 
-.conversation-header  {
-  padding: 5px;
+.conversation-header {
+  padding: 15px;
   margin: 0;
-  background-color: #333;
-  color: #fff;
+  background-color: var(--card-bg);
+  color: var(--text-primary);
   font-size: 1.2rem;
-  border-bottom: 1px solid #444;
+  border-bottom: 1px solid var(--card-border);
   display: flex;
   gap: 10px;
   align-items: center;
@@ -954,19 +1022,18 @@ watch(selectedConversation, () => {
   flex-grow: 1;
   padding: 15px;
   overflow-y: auto;
-  background-color: #1e1e1e;
+  background-color: var(--bg-dark);
   background-image: 
     linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
   background-size: 20px 20px;
   max-width: 1400px;
-
 }
 
 .message {
   margin-bottom: 15px;
   padding: 10px 15px;
-  background-color: #333;
+  background-color: var(--card-bg);
   border-radius: 10px;
   max-width: 70%;
   width: fit-content;
@@ -975,26 +1042,16 @@ watch(selectedConversation, () => {
   word-wrap: break-word;
   max-width: 70%;
   display: flex;
-
+  border: 1px solid var(--card-border);
 }
 
 .message-right {
   margin-left: auto;
-  background-color: #4CAF50;
-  color: white;
-  
-}
-.messages {
-    display: flex;
-    flex-direction: column-reverse; /* Reverse the order */
-    overflow-y: auto;
-    padding: 10px;
-    position: relative;
+  background-color: var(--primary-light);
+  color: var(--text-primary);
+  border: 1px solid var(--primary);
 }
 
-.message {
-    align-items: flex-start;
-}
 .message p {
   margin: 5px 0;
   word-break: break-word;
@@ -1002,7 +1059,7 @@ watch(selectedConversation, () => {
 
 .message-timestamp {
   font-size: 0.7rem;
-  color: #aaa;
+  color: var(--text-secondary);
   display: block;
   text-align: right;
 }
@@ -1010,32 +1067,25 @@ watch(selectedConversation, () => {
 .message-status {
   margin-left: 5px;
   font-size: 0.7rem;
-}
-
-.text-secondary {
-  color: #aaa;
-}
-
-.text-primary {
-  color: #4CAF50;
+  color: var(--primary);
 }
 
 /* Message Input */
 .message-input {
   padding: 15px;
-  background-color: #252525;
-  border-top: 1px solid #333;
+  background-color: var(--card-bg);
+  border-top: 1px solid var(--card-border);
   display: flex;
   align-items: center;
 }
 
-.message-input textarea{
+.message-input textarea {
   flex-grow: 1;
   padding: 10px;
   border-radius: 5px;
-  border: 1px solid #444;
-  background-color: #333;
-  color: #fff;
+  border: 1px solid var(--card-border);
+  background-color: var(--bg-darker);
+  color: var(--text-primary);
   resize: none;
   min-height: 50px;
   max-height: 150px;
@@ -1044,12 +1094,12 @@ watch(selectedConversation, () => {
 
 .message-input textarea:focus {
   outline: none;
-  border-color: #4CAF50;
+  border-color: var(--primary);
 }
 
 .message-input button {
   padding: 10px 15px;
-  background-color: #4CAF50;
+  background-color: var(--primary);
   color: white;
   border: none;
   border-radius: 5px;
@@ -1058,21 +1108,20 @@ watch(selectedConversation, () => {
 }
 
 .message-input button:hover {
-  background-color: #45a049;
+  background-color: color-mix(in srgb, var(--primary) 90%, black);
 }
-
 
 /* Group Details */
 .group-details {
   width: 250px;
-  background-color: #252525;
-  border-left: 1px solid #333;
+  background-color: var(--card-bg);
+  border-left: 1px solid var(--card-border);
   padding: 15px;
   overflow-y: auto;
 }
 
 .group-details h4, .group-details h5 {
-  color: #4CAF50;
+  color: var(--primary);
   margin-top: 0;
 }
 
@@ -1111,7 +1160,7 @@ watch(selectedConversation, () => {
 }
 
 .modal {
-  background-color: #252525;
+  background-color: var(--card-bg);
   border-radius: 8px;
   padding: 20px;
   width: 90%;
@@ -1119,26 +1168,27 @@ watch(selectedConversation, () => {
   max-height: 80vh;
   overflow-y: auto;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--card-border);
 }
 
 .modal h3 {
   margin-top: 0;
-  color: #4CAF50;
+  color: var(--primary);
 }
 
 .modal label {
   display: block;
   margin: 10px 0 5px;
-  color: #aaa;
+  color: var(--text-secondary);
 }
 
 .modal input[type="text"] {
   width: 100%;
   padding: 8px;
   border-radius: 4px;
-  border: 1px solid #444;
-  background-color: #333;
-  color: #fff;
+  border: 1px solid var(--card-border);
+  background-color: var(--bg-darker);
+  color: var(--text-primary);
 }
 
 .user-list {
@@ -1152,11 +1202,11 @@ watch(selectedConversation, () => {
   justify-content: space-between;
   align-items: center;
   padding: 8px 0;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--card-border);
 }
 
 .add-participant-btn {
-  background-color: #4CAF50;
+  background-color: var(--primary);
   color: white;
   border: none;
   border-radius: 50%;
@@ -1174,7 +1224,7 @@ watch(selectedConversation, () => {
 
 .participant-tag {
   display: inline-block;
-  background-color: #333;
+  background-color: var(--bg-darker);
   padding: 5px 10px;
   border-radius: 15px;
   margin-right: 5px;
@@ -1203,42 +1253,22 @@ watch(selectedConversation, () => {
 }
 
 .modal-actions button:first-child {
-  background-color: #555;
-  color: #fff;
-  border: none;
+  background-color: var(--bg-darker);
+  color: var(--text-primary);
+  border: 1px solid var(--card-border);
 }
 
 .modal-actions button:last-child {
-  background-color: #4CAF50;
+  background-color: var(--primary);
   color: white;
   border: none;
 }
 
-/* Post/Attachment Styles */
-.post-container {
-  margin-top: 10px;
-}
-
-.post-image {
-  max-width: 100%;
-  max-height: 300px;
-  border-radius: 5px;
-}
-
 /* Buttons */
-button {
-  transition: all 0.2s;
-}
-
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .create-group-btn {
   margin: 15px;
   padding: 10px;
-  background-color: #4CAF50;
+  background-color: var(--primary);
   color: white;
   border: none;
   border-radius: 5px;
@@ -1246,119 +1276,39 @@ button:disabled {
 }
 
 .create-group-btn:hover {
-  background-color: #45a049;
+  background-color: color-mix(in srgb, var(--primary) 90%, black);
 }
-.upload-input{
-    background-color: #1a1a1a;
-    width: 200px;
-}
+
 /* Loading Indicator */
 .loading-indicator {
   text-align: center;
   padding: 10px;
-  color: #aaa;
+  color: var(--text-secondary);
   font-style: italic;
 }
-.sender-avatar {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    overflow: hidden;
-    margin-right: 10px;
-    flex-shrink: 0;
-}
 
-.sender-avatar-image {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
+/* Avatar Styles */
+.sender-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  margin-right: 10px;
+  flex-shrink: 0;
 }
 
 .default-avatar {
-    font-size: 18px;
-    font-weight: bold;
-    color: #666;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background-color: #f0f0f0;
-}
-.avatar-container {
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background-color: #f0f0f0;
-    margin-right: 10px;
-}
-.time-status{
-    display: flex;
-}
-/* Responsive Design */
-@media (max-width: 768px) {
-  .chat-container {
-    flex-direction: column;
-    height: auto;
-    min-height: 100vh;
-  }
-
-  .conversation-list {
-    width: 100%;
-    height: 300px;
-    border-right: none;
-    border-bottom: 1px solid #333;
-  }
-
-  .message-view {
-    height: calc(100vh - 300px);
-  }
-
-  .group-details {
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: 80%;
-    max-width: 300px;
-    transform: translateX(100%);
-    transition: transform 0.3s ease;
-    z-index: 100;
-  }
-
-  .group-details.active {
-    transform: translateX(0);
-  }
-
-  .message {
-    max-width: 85%;
-  }
+  font-size: 18px;
+  font-weight: bold;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: var(--bg-darker);
 }
 
-@media (max-width: 480px) {
-  .message-input {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .message-input textarea {
-    margin-right: 0;
-    margin-bottom: 10px;
-  }
-
-  .message-input button {
-    width: 100%;
-  }
-
-  .modal {
-    width: 95%;
-    padding: 15px;
-  max-height: 90vh;
-  }
-}
+/* Responsive Design (keep your existing media queries) */
 </style>

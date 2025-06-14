@@ -127,10 +127,11 @@
             <img :src="`/storage/${media.file_path}`" alt="Media" />
           </div>
           <div class="post-media" v-else-if="isVideo(media.file_type)">
-            <video controls style="max-width: 100%;">
+            <video-player controls
+            :options="playerOptions" style="max-width: 100%;">
               <source :src="`/storage/${media.file_path}`" :type="media.file_type" />
               Your browser does not support the video tag.
-            </video>
+            </video-player>
           </div>
           <div v-else class="post-media">
             <a :href="`/storage/${media.file_path}`" target="_blank">Download File</a>
@@ -295,7 +296,14 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { Link } from '@inertiajs/vue3';
 import { ref, defineProps, defineEmits, onMounted, onUnmounted } from 'vue';
+import { VideoPlayer } from '@videojs-player/vue'
+import 'video.js/dist/video-js.css'
 
+const playerOptions = {
+  fluid: true,
+  responsive: true,
+  playbackRates: [0.5, 1, 1.5, 2]
+}
 // Extend day.js with the relativeTime plugin
 dayjs.extend(relativeTime);
 

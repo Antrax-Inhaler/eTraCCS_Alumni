@@ -29,12 +29,16 @@ const showFileViewer = ref(false);
 const currentFile = ref(null);
 const isFiltering = ref(false);
 let filterTimeout = null;
-
+const printFilters = ref({ ...props.filters });
+const filteredGraduates = ref([]);
 // Safe computed properties
-const filteredCount = computed(() => graduates.value?.data?.length || 0);
 const totalCount = computed(() => graduates.value?.total || 0);
 const latestGradYear = computed(() => Math.max(...(statistics.value.yearlyGraduation?.map(item => item.year_graduated) || [0])));
 const earliestGradYear = computed(() => Math.min(...(statistics.value.yearlyGraduation?.map(item => item.year_graduated) || [0])));
+const filteredCount = computed(() => filteredGraduates.value.length);
+const printCount = computed(() => {
+  return filteredGraduates.value.filter(g => willPrint(g)).length;
+});
 
 const generateReport = () => {
     isFiltering.value = true;
@@ -55,13 +59,6 @@ const generateReport = () => {
 
 watch(filters, generateReport, { deep: true });
 
-const downloadReport = (format) => {
-    window.location.href = route('reports.graduate-profiles.export', {
-        ...filters.value,
-        format: format
-    });
-};
-
 const viewFile = (file) => {
     currentFile.value = file;
     showFileViewer.value = true;
@@ -70,6 +67,32 @@ const viewFile = (file) => {
 const closeFileViewer = () => {
     showFileViewer.value = false;
     currentFile.value = null;
+};
+
+const willPrint = (graduate) => {
+  return 
+    (!printFilters.value.search || 
+     `${graduate.user?.first_name} ${graduate.user?.last_name}`.includes(printFilters.value.search) &&
+    (!printFilters.value.graduationYearFrom || 
+     graduate.year_graduated >= printFilters.value.graduationYearFrom) &&
+    (!printFilters.value.graduationYearTo || 
+     graduate.year_graduated <= printFilters.value.graduationYearTo) &&
+    (!printFilters.value.degree || 
+     graduate.degree_earned.includes(printFilters.value.degree))
+  );
+};
+
+// Update print filters when export is clicked
+const updatePrintFilters = () => {
+  printFilters.value = { ...filters.value };
+};
+
+const downloadReport = (format) => {
+  updatePrintFilters();
+  window.location.href = route('reports.graduate-profiles.export', {
+    ...printFilters.value,
+    format: format
+  });
 };
 </script>
 
@@ -195,32 +218,60 @@ const closeFileViewer = () => {
             </div>
 
             <!-- Graduates Table -->
-            <div class="data-table">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Degree</th>
-                            <th>Year</th>
-                            <th>Campus</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <template v-if="graduates?.data?.length > 0">
-                            <tr v-for="graduate in graduates.data" :key="graduate.id">
-                                <td>{{ graduate.user?.first_name }} {{ graduate.user?.last_name }}</td>
-                                <td>{{ graduate.degree_earned }}</td>
-                                <td>{{ graduate.year_graduated }}</td>
-                                <td>{{ graduate.campus || 'N/A' }}</td>
-                            </tr>
-                        </template>
-                        <tr v-else>
-                            <td colspan="4" class="no-results">No records match your filters</td>
-                        </tr>
-                    </tbody>
-                </table>
-                <Pination v-if="graduates?.data?.length > 0" :links="graduates.links" />
-            </div>
+            <div class="data-table-container">
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Degree</th>
+              <th>Year</th>
+              <th>Campus</th>
+              <th class="print-indicator">Included in Print</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template v-if="filteredGraduates.length > 0">
+              <tr 
+                v-for="graduate in filteredGraduates" 
+                :key="graduate.id"
+                :class="{ 'will-print': willPrint(graduate) }"
+              >
+                <td>{{ graduate.user?.first_name }} {{ graduate.user?.last_name }}</td>
+                <td>{{ graduate.degree_earned }}</td>
+                <td>{{ graduate.year_graduated }}</td>
+                <td>{{ graduate.campus || 'N/A' }}</td>
+                <td class="print-indicator">
+                  <span v-if="willPrint(graduate)" class="print-included">✓ Included</span>
+                  <span v-else class="print-excluded">✗ Excluded</span>
+                </td>
+              </tr>
+            </template>
+            <tr v-else>
+              <td colspan="5" class="no-results">No records match your filters</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      
+      <div class="print-preview-summary">
+        <h3>Print Preview Summary</h3>
+        <div class="summary-stats">
+          <div class="summary-stat">
+            <span class="stat-label">Total Records:</span>
+            <span class="stat-value">{{ totalCount }}</span>
+          </div>
+          <div class="summary-stat">
+            <span class="stat-label">Filtered Records:</span>
+            <span class="stat-value">{{ filteredCount }}</span>
+          </div>
+          <div class="summary-stat">
+            <span class="stat-label">Will Print:</span>
+            <span class="stat-value">{{ printCount }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
         </div>
 
         <!-- File Viewer Modal -->
@@ -632,4 +683,15 @@ const closeFileViewer = () => {
     padding: 20px;
     color: var(--text-secondary);
 }
+option {
+      background-color: var(--bg-dark);
+      color: var(--text-secondary);
+    }
+
+    /* Optional: style on focus */
+    select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 5px var(--primary-light);
+    }
 </style>

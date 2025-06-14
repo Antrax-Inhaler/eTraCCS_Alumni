@@ -207,6 +207,8 @@ const activeTab = ref('profile');
     color: var(--text-secondary);
     cursor: pointer;
     transition: all 0.2s;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+
 }
 
 .tab-button:hover {

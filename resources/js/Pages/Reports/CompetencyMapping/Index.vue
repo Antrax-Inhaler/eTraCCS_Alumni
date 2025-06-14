@@ -272,7 +272,6 @@
     padding: 0.5rem;
     border-radius: 4px;
     border: 1px solid var(--card-border);
-    background-color: var(--bg-darker);
     color: var(--text-primary);
   }
   
@@ -415,4 +414,50 @@
       align-items: flex-start;
     }
   }
+  .filter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.filter-group label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 5px;
+}
+
+.filter-group input,
+.filter-group select {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--card-border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: var(--text-primary);
+    width: 100%;
+}
+
+.filter-group input::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+.taba button{
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+
+}
+option {
+      background-color: var(--bg-dark);
+      color: var(--text-secondary);
+    }
+
+    /* Optional: style on focus */
+    select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 5px var(--primary-light);
+    }
   </style>

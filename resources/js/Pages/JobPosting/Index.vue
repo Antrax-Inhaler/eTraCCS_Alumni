@@ -12,17 +12,21 @@
       ></span>
     </div>
   </div> -->
-  <div class="stories">
-    <div class="story" v-for="user in userList" :key="user.id">
-        <Link :href="`/profile/${user.encrypted_id}`" class="add-story">
-            <img :src="user.profile_photo_url" class="story-avatar" alt="Story">
-            <span
-                class="status-indicator"
-                :class="{ online: user.is_online, offline: !user.is_online }"
-            ></span>
-        </Link>
-        <span class="user-name">{{ user.full_name }}</span>
-    </div>
+<div class="stories">
+  <div class="story" v-for="user in userList" :key="user.id">
+    <Link :href="`/profile/${user.encrypted_id}`" class="story-link">
+      <div class="avatar-container">
+        <img :src="user.profile_photo_url" class="story-avatar" alt="Story">
+        <!-- Balloon Talk (Auto-sizing) -->
+        <div class="balloon-talk" :class="{ wider: user.note?.length > 15 }">
+          {{ user.note || "Active now" }}
+        </div>
+        <!-- Online Status -->
+        <span class="status-indicator" :class="{ online: user.is_online }"></span>
+      </div>
+    </Link>
+    <span class="user-name">{{ user.full_name }}</span>
+  </div>
 </div>
   <!-- <div class="mt-6">
     <h2 class="text-lg font-bold mb-4">Recommended Users</h2>
@@ -101,7 +105,120 @@
         </div>
 <div class="contaner">
       <!-- Unified Content Creation Form -->
-      <div class="card post-input" @click="openModal">
+<div v-if="!isProfileComplete" class="profile-completion">
+  <div class="completion-header">
+    <h2>Complete Your Profile to Unlock Posting</h2>
+    <p>Please provide the following information to help the university and unlock full social features</p>
+  </div>
+
+  <div class="card-container">
+    <!-- Educational Background Card - Only show if education data is missing -->
+    <div v-if="!hasEducation" class="completion-card">
+      <div class="card-icon">
+        <i class="fas fa-graduation-cap"></i>
+      </div>
+      <div class="card-content">
+        <h3>Educational Background</h3>
+        <p>Tell us about your education at Mindoro State University</p>
+        <button v-if="user.id === auth_user_id" @click="navigateToEducation" class="card-button">
+          Add Education
+        </button>
+      </div>
+    </div>
+
+    <!-- Employment Status Card - Only show if employment data is missing -->
+ <div v-if="shouldShowEmploymentCard" class="completion-card">
+      <div class="card-icon">
+        <i class="fas fa-briefcase"></i>
+      </div>
+      <div class="card-content">
+        <h3>Employment History</h3>
+        <p>Share your current and past employment information</p>
+        <button v-if="user.id === auth_user_id" @click="navigateToEmploymentHistories" class="card-button">
+          Add Employment
+        </button>
+      </div>
+    </div>
+    <div v-if="shouldShowUnemploymentCard" class="completion-card">
+      <div class="card-icon">
+        <i class="fas fa-user-slash"></i>
+      </div>
+      <div class="card-content">
+        <h3>Unemployment Status</h3>
+        <p v-if="hasPastEmployment">
+          It seems you're no longer working at your previous job. Let us know your current status.
+        </p>
+        <p v-else>
+          Let us know if you're currently not employed
+        </p>
+        <button @click="openUnemploymentModal" class="card-button">
+          Add Unemployment Details
+        </button>
+      </div>
+    </div>
+
+ <div v-if="shouldShowJobHuntingCard" class="completion-card">
+      <div class="card-icon">
+        <i class="fas fa-search"></i>
+      </div>
+      <div class="card-content">
+        <h3>Job Hunting Experience</h3>
+        <p v-if="hasEmploymentHistory">
+          Share your experience finding new employment after your last job
+        </p>
+        <p v-else>
+          Tell us about your job search journey after graduation
+        </p>
+        <button @click="openJobHuntingModal" class="card-button">
+          Add Experience
+        </button>
+      </div>
+    </div>
+
+    <!-- Competencies Card - Only show if competencies are missing -->
+    <!-- <div v-if="!hasCompetencies" class="completion-card">
+      <div class="card-icon">
+        <i class="fas fa-tools"></i>
+      </div>
+      <div class="card-content">
+        <h3>Key Competencies</h3>
+        <p>List the skills you gained from your BSIT program</p>
+        <button @click="navigateToProfile" class="card-button">
+          Add Skills
+        </button>
+      </div>
+    </div> -->
+
+    <!-- Location Card - Only show if location is missing -->
+    <div v-if="!hasLocation" class="completion-card">
+      <div class="card-icon">
+        <i class="fas fa-map-marker-alt"></i>
+      </div>
+      <div class="card-content">
+        <h3>Current Location</h3>
+        <p>Help us connect you with alumni in your area</p>
+        <button @click="navigateToProfile" class="card-button">
+          Add Location
+        </button>
+      </div>
+    </div>
+
+    <!-- Program Suggestions Card - Only show if suggestions are missing -->
+    <div v-if="!hasProgramSuggestions" class="completion-card">
+      <div class="card-icon">
+        <i class="fas fa-lightbulb"></i>
+      </div>
+      <div class="card-content">
+        <h3>BSIT Program Suggestions</h3>
+        <p>Help improve the BSIT program with your feedback</p>
+        <button @click="openProgramSuggestionModal" class="card-button">
+          Add Suggestions
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+      <div v-else  class="card post-input" @click="openModal">
         <div class="post-input-header">
           <img :src="$page.props.auth.user.profile_photo_url" :alt="$page.props.auth.user.name" class="post-avatar">  
           <input type="text" placeholder="Start a thread...">
@@ -175,28 +292,63 @@
                 required
               ></textarea>
             </div>
-            
+<div class="form-group">
+      <label for="post-tags">Tags</label>
+      <VoerroTagsInput
+        id="post-tags"
+        v-model="formData.tags"
+        placeholder="Add tags (press enter to add)"
+        class="form-control"
+        
+      />
+    </div>
             <div class="form-group">
-              <label for="post-tags">Tags</label>
-              <div class="tags-container">
-                <span 
-                  v-for="(tag, index) in formData.tags" 
-                  :key="index" 
-                  class="tag"
+              <label>Location on Map</label>
+              <GMapMap
+                :center="mapCenter"
+                :zoom="12"
+                style="width: 100%; height: 300px;"
+                @click="onMapClick"
+              >
+                <GMapMarker
+                  v-if="markerPosition"
+                  :position="markerPosition"
+                  :draggable="true"
+                  @dragend="onMarkerDragEnd"
+                />
+              </GMapMap>
+            </div>
+            <div class="file-upload-container">
+              <label class="file-upload-label" for="event-files">
+                <i class="fas fa-cloud-upload-alt"></i>
+                <span>Click to upload event media</span>
+                <span>or drag and drop files here</span>
+                <input 
+                  id="event-files" 
+                  class="file-upload-input" 
+                  type="file" 
+                  multiple 
+                  accept="image/*,video/*" 
+                  @change="handleFileUpload($event, 'event')"
                 >
-                  {{ tag }}
-                  <button @click="removeTag(tag)" class="tag-remove">&times;</button>
-                </span>
-                <input
-                  id="post-tags"
-                  class="form-control"
-                  v-model="formData.tagsInput"
-                  placeholder="Add tags (comma separated)"
-                  @keydown.enter.prevent="addTag"
-                >
+              </label>
+              
+              <div class="file-preview-container">
+                <div class="file-preview-title">Selected files:</div>
+                <div class="file-preview-list">
+                  <div 
+                    v-for="(file, index) in selectedFiles.event" 
+                    :key="index" 
+                    class="file-preview-item"
+                  >
+                    <img v-if="file.type.startsWith('image/')" :src="file.preview">
+                    <i v-else class="fas fa-file"></i>
+                    <div class="file-info">{{ file.name }}</div>
+                    <button class="remove-btn" @click="removeFile('event', index)">&times;</button>
+                  </div>
+                </div>
               </div>
             </div>
-            
             <div class="form-group">
               <label for="post-privacy">Privacy</label>
               <select 
@@ -258,7 +410,15 @@
                 required
               >
             </div>
-            
+<div class="form-group">
+      <label for="post-tags">Tags</label>
+      <VoerroTagsInput
+        id="post-tags"
+        v-model="formData.tags"
+        placeholder="Add tags (press enter to add)"
+        class="form-control"
+      />
+    </div>
             <div class="form-group">
               <label for="event-description">Description</label>
               <textarea 
@@ -350,7 +510,7 @@
           <!-- Job Form -->
           <div v-if="selectedType === 'job_posting'" class="content-form">
             <div class="form-group">
-              <label for="job-title">Job Title</label>
+              <label for="job-title">Job Title</label> 
               <input 
                 id="job-title" 
                 class="form-control" 
@@ -399,7 +559,7 @@
             </div>
             
             <div class="form-row">
-              <div class="form-group">
+              <!-- <div class="form-group">
                 <label for="job-salary">Salary Range</label>
                 <input 
                   id="job-salary" 
@@ -407,7 +567,7 @@
                   v-model="formData.salary_range" 
                   placeholder="e.g., $50,000 - $70,000"
                 >
-              </div>
+              </div> -->
               <div class="form-group">
                 <label for="job-deadline">Application Deadline</label>
                 <input 
@@ -442,7 +602,15 @@
                 </select>
               </div>
             </div>
-            
+            <div class="form-group">
+      <label for="post-tags">Tags</label>
+      <VoerroTagsInput
+        id="post-tags"
+        v-model="formData.tags"
+        placeholder="Add tags (press enter to add)"
+        class="form-control"
+      />
+    </div>
             <div class="form-group">
               <label for="job-privacy">Privacy</label>
               <select 
@@ -511,8 +679,12 @@
           
           <div class="modal-footer">
             <button class="btn btn-outline" @click="closeModal">Cancel</button>
-            <button class="btn btn-primary" type="submit">Publish</button>
-          </div>
+            <button class="btn btn-primary" type="submit" :disabled="isSubmitting">
+      <span v-if="!isSubmitting">Publish</span>
+      <span v-else>
+        <i class="fas fa-spinner fa-spin"></i> Publishing...
+      </span>
+    </button>          </div>
         </form>
       </div>
     </div>
@@ -524,6 +696,251 @@
           :initialPagination="pagination"
         />
       </div>
+<!-- Job Hunting Experience Modal -->
+<div class="modal-overlay" :class="{ active: showJobHuntingModal }">
+  <div class="modal-container">
+    <div class="modal-header">
+      <h3 class="modal-title">Job Hunting Experience</h3>
+      <button class="modal-close" @click="closeJobHuntingModal">&times;</button>
+    </div>
+    
+    <div class="modal-body">
+      <form @submit.prevent="submitJobHuntingExperience">
+        <div class="content-form">
+          <div class="form-group">
+            <label>How long did it take to find your first job?</label>
+            <select 
+              v-model="jobHuntingData.time_to_first_job" 
+              class="form-control"
+              required
+            >
+              <option value="">Select duration</option>
+              <option value="less_than_1_month">Less than 1 month</option>
+              <option value="1_to_3_months">1-3 months</option>
+              <option value="4_to_6_months">4-6 months</option>
+              <option value="7_to_12_months">7-12 months</option>
+              <option value="more_than_1_year">More than 1 year</option>
+              <option value="never_employed">Never employed</option>
+            </select>
+             <span v-if="jobHuntingErrors.time_to_first_job" class="error-message">
+            {{ jobHuntingErrors.time_to_first_job }}
+          </span>
+          </div>
+          
+          <div class="form-group">
+            <label>What was your starting salary?</label>
+            <select 
+              v-model="jobHuntingData.starting_salary" 
+              class="form-control"
+            >
+              <option value="">Select salary range</option>
+              <option value="below_10k">Below ₱10,000</option>
+              <option value="10k_15k">₱10,000 - ₱15,000</option>
+              <option value="15k_20k">₱15,000 - ₱20,000</option>
+              <option value="20k_30k">₱20,000 - ₱30,000</option>
+              <option value="above_30k">Above ₱30,000</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label>How did you find your job?</label>
+            <select 
+              v-model="jobHuntingData.job_source" 
+              class="form-control"
+            >
+              <option value="">Select source</option>
+              <option value="online_portals">Online job portals</option>
+              <option value="walk_in">Walk-in application</option>
+              <option value="referral">Referral</option>
+              <option value="university_fair">University job fair</option>
+              <option value="social_media">Social media</option>
+              <option value="government">Government employment service</option>
+              <option value="other">Other</option>
+            </select>
+            <input 
+              v-if="jobHuntingData.job_source === 'other'"
+              v-model="jobHuntingData.other_source"
+              placeholder="Please specify"
+              class="form-control mt-2"
+            />
+          </div>
+          
+          <div class="form-group">
+            <label>What challenges did you face?</label>
+            <div class="checkbox-container">
+              <div 
+                v-for="difficulty in [
+                  'lack_of_opportunities',
+                  'high_competition',
+                  'qualification_mismatch',
+                  'lack_of_experience',
+                  'personal_issues'
+                ]" 
+                :key="difficulty" 
+                class="checkbox-item"
+              >
+                <input
+                  type="checkbox"
+                  :id="`difficulty-${difficulty}`"
+                  v-model="jobHuntingData.difficulties"
+                  :value="difficulty"
+                  class="form-checkbox"
+                />
+                <label :for="`difficulty-${difficulty}`">
+                  {{ difficulty.replace(/_/g, ' ') }}
+                </label>
+              </div>
+              <div class="checkbox-item">
+                <input
+                  type="checkbox"
+                  id="difficulty-other"
+                  v-model="jobHuntingData.difficulties"
+                  value="other"
+                  class="form-checkbox"
+                />
+                <label for="difficulty-other">Other</label>
+              </div>
+              <input 
+                v-if="jobHuntingData.difficulties.includes('other')"
+                v-model="jobHuntingData.other_difficulty"
+                placeholder="Please specify"
+                class="form-control mt-2"
+              />
+            </div>
+          </div>
+          
+          <div class="modal-footer">
+            <button type="button" @click="closeJobHuntingModal" class="btn btn-outline">Cancel</button>
+            <button type="submit" class="btn btn-primary">
+              <span v-if="!isSubmitting">Save Experience</span>
+              <span v-else>
+                <i class="fas fa-spinner fa-spin"></i> Saving...
+              </span>
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" :class="{ active: showUnemploymentModal }">
+    <div class="modal-container">
+        <div class="modal-header">
+            <h3 class="modal-title">Unemployment Details</h3>
+            <button class="modal-close" @click="closeUnemploymentModal">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form @submit.prevent="submitUnemploymentDetails">
+                <div class="form-group">
+                    <label>Reason for Unemployment</label>
+                    <div class="checkbox-container">
+                        <div v-for="reason in unemploymentReasons" :key="reason.value" class="checkbox-item">
+                            <input
+                                type="checkbox"
+                                :id="`reason-${reason.value}`"
+                                v-model="unemploymentData.reasons"
+                                :value="reason.value"
+                                class="form-checkbox"
+                            />
+                            <label :for="`reason-${reason.value}`">{{ reason.label }}</label>
+                        </div>
+                    </div>
+                    <input
+                        v-if="unemploymentData.reasons.includes('other')"
+                        v-model="unemploymentData.other_reason"
+                        placeholder="Please specify other reason"
+                        class="form-control mt-2"
+                    />
+                </div>
+
+                <div class="form-group">
+                    <label>
+                        <input
+                            type="checkbox"
+                            v-model="unemploymentData.has_awards"
+                            class="form-checkbox"
+                        />
+                        Received any awards while unemployed?
+                    </label>
+                    <textarea
+                        v-if="unemploymentData.has_awards"
+                        v-model="unemploymentData.awards_details"
+                        placeholder="Describe your awards..."
+                        class="form-control mt-2"
+                        rows="3"
+                    ></textarea>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" @click="closeUnemploymentModal" class="btn btn-outline">
+                        Cancel
+                    </button>
+                    <button type="submit" class="btn btn-primary" :disabled="isSubmitting">
+                        <span v-if="!isSubmitting">Save Details</span>
+                        <span v-else><i class="fas fa-spinner fa-spin"></i> Saving...</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<!-- BSIT Program Suggestions Modal -->
+<div class="modal-overlay" :class="{ active: showProgramSuggestionModal }">
+  <div class="modal-container">
+    <div class="modal-header">
+      <h3 class="modal-title">BSIT Program Suggestions</h3>
+      <button class="modal-close" @click="closeProgramSuggestionModal">&times;</button>
+    </div>
+    
+    <div class="modal-body">
+      <form @submit.prevent="submitProgramSuggestion">
+        <div class="content-form">
+          <div class="form-group">
+            <label>Suggestion Type</label>
+            <select 
+              v-model="programSuggestionData.suggestion_type" 
+              class="form-control"
+              required
+            >
+              <option value="">Select suggestion type</option>
+              <option 
+                v-for="type in suggestionTypes" 
+                :key="type.value" 
+                :value="type.value"
+              >
+                {{ type.label }}
+              </option>
+            </select>
+             <span v-if="programSuggestionErrors.suggestion_type" class="error-message">
+            {{ programSuggestionErrors.suggestion_type }}
+          </span>
+          </div>
+          
+          <div class="form-group">
+            <label>Detailed Suggestion</label>
+            <textarea 
+              v-model="programSuggestionData.description"
+              placeholder="Please provide detailed suggestions to improve the BSIT program..."
+              class="form-control"
+              required
+              rows="4"
+            ></textarea>
+          </div>
+          
+          <div class="modal-footer">
+            <button type="button" @click="closeProgramSuggestionModal" class="btn btn-outline">Cancel</button>
+            <button type="submit" class="btn btn-primary">
+              <span v-if="!isSubmitting">Submit Suggestion</span>
+              <span v-else>
+                <i class="fas fa-spinner fa-spin"></i> Submitting...
+              </span>
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
     </div>
     <div class="container-left">
           <div class="mt-6">
@@ -563,59 +980,84 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, computed, watch } from 'vue';
 import axios from 'axios';
 import Timeline from './Timeline.vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
-import SampleTable from './SampleTable.vue';
-import { usePage, Link } from '@inertiajs/vue3'
-
-const props = defineProps({
-  current_user: {
-    type: Object,
-    default: null
-  },
-  entities: {
-    type: Array,
-    required: true,
-    default: () => [],
-  },
-  pagination: {
-    type: Object,
-    required: true,
-  },
-  userList: {
-    type: Array,
-    default: () => [],
-  },
-});
-
+import { usePage, Link, router } from '@inertiajs/vue3'
+import VoerroTagsInput from '@voerro/vue-tagsinput'
+import '@voerro/vue-tagsinput/dist/style.css'
+const page = usePage();
 // Reactive state
+const isSubmitting = ref(false);
 const showModal = ref(false);
+const showJobHuntingModal = ref(false);
+const showProgramSuggestionModal = ref(false);
+const activeTab = ref('completion');
+const currentGuide = ref(null);
+const validationErrors = ref({});
+
+// Form data refs
 const selectedType = ref('post');
-const selectedFiles = ref({
-  event: [],
-  job: []
-});
-const mapCenter = ref({ lat: 14.5995, lng: 120.9842 }); // Default to Manila
+const selectedFiles = ref({ event: [], job: [] });
+const mapCenter = ref({ lat: 14.5995, lng: 120.9842 });
 const markerPosition = ref(null);
-    
+const emit = defineEmits(['content-created']);
+// const jobHuntingData = ref({
+//     time_to_first_job: '',
+//     difficulties: [],
+//     other_difficulty: '',
+//     job_source: '',
+//     other_source: '',
+//     starting_salary: ''
+// });
+// const programSuggestionData = ref({
+//     suggestion_type: '',
+//     description: ''
+// });
+
+// Constants
 const contentTypes = [
   { label: 'Post', value: 'post', icon: 'fas fa-pencil-alt' },
   { label: 'Event', value: 'event', icon: 'fas fa-calendar-alt' },
   { label: 'Job', value: 'job_posting', icon: 'fas fa-briefcase' }
 ];
-    
+
+const suggestionTypes = [
+    { value: 'industry_aligned_subjects', label: 'More industry-aligned subjects' },
+    { value: 'hands_on_projects', label: 'More hands-on projects' },
+    { value: 'updated_tools', label: 'Updated tools/technologies' },
+    { value: 'stronger_internship', label: 'Stronger internship program' },
+    { value: 'cert_prep', label: 'Certification preparation' },
+    { value: 'career_services', label: 'Better career services' },
+    { value: 'other', label: 'Other suggestions' }
+];
+
+// Props
+const props = defineProps({
+  current_user: Object,
+  auth_user_id: Number,
+  entities: Array,
+  pagination: Object,
+  userList: Array,
+  user: Object,
+  hasEducation: Boolean,
+  hasEmployment: Boolean,
+  hasJobHunting: Boolean,
+  hasCompetencies: Boolean,
+  hasLocation: Boolean,
+  hasProgramSuggestions: Boolean,
+});
+
+// Form data
+// Form data
 const formData = ref({
   // Common fields
   privacy_setting: 'public',
-  
+  tags: [],
   // Post fields
   title: '',
   body: '',
-  tags: [],
-  tagsInput: '',
-  
   // Event fields
   event_name: '',
   date: '',
@@ -625,211 +1067,122 @@ const formData = ref({
   registration_link: '',
   latitude: '',
   longitude: '',
-  
   // Job fields
   job_title: '',
   company_name: '',
   job_type: 'full-time',
-  salary_range: '',
   application_deadline: '',
   is_remote: false,
   location: ''
 });
-
-// Methods
-const openModal = () => {
-  showModal.value = true;
-};
-    
-const closeModal = () => {
-  showModal.value = false;
-};
-    
-const selectContentType = (type) => {
-  selectedType.value = type;
-};
-    
-const addTag = () => {
-  if (formData.value.tagsInput) {
-    const newTags = formData.value.tagsInput
-      .split(',')
-      .map(tag => tag.trim())
-      .filter(tag => tag.length > 0);
-    
-    formData.value.tags = [...new Set([...formData.value.tags, ...newTags])];
-    formData.value.tagsInput = '';
-  }
-};
-    
-const removeTag = (tagToRemove) => {
-  formData.value.tags = formData.value.tags.filter(tag => tag !== tagToRemove);
-};
-    
-const handleFileUpload = (event, type) => {
-  const files = Array.from(event.target.files);
-  selectedFiles.value[type] = files.map(file => {
-    const fileWithPreview = file;
-    if (file.type.startsWith('image/')) {
-      fileWithPreview.preview = URL.createObjectURL(file);
-    }
-    return fileWithPreview;
-  });
-};
-    
-const removeFile = (type, index) => {
-  selectedFiles.value[type].splice(index, 1);
-};
-    
-const onMapClick = (e) => {
-  markerPosition.value = { lat: e.latLng.lat(), lng: e.latLng.lng() };
-  formData.value.latitude = e.latLng.lat();
-  formData.value.longitude = e.latLng.lng();
-};
-    
-const onMarkerDragEnd = (e) => {
-  markerPosition.value = { lat: e.latLng.lat(), lng: e.latLng.lng() };
-  formData.value.latitude = e.latLng.lat();
-  formData.value.longitude = e.latLng.lng();
-};
-    
 const submitContent = async () => {
+  isSubmitting.value = true;
   const data = new FormData();
-  validationErrors.value = {}; // Reset previous validation errors
+  validationErrors.value = {};
 
-  // Append common fields
-  data.append('type', selectedType.value);
-  data.append('privacy_setting', formData.value.privacy_setting);
-  
-  // Append type-specific fields
-  if (selectedType.value === 'post') {
-    data.append('title', formData.value.title);
-    data.append('body', formData.value.body);
-    data.append('tags', JSON.stringify(formData.value.tags)); // Send as JSON
-  } 
-  else if (selectedType.value === 'event') {
-    data.append('event_name', formData.value.event_name);
-    data.append('date', formData.value.date);
-    data.append('time', formData.value.time);
-    data.append('organizer_name', formData.value.organizer_name);
-    data.append('description', formData.value.description);
-    data.append('registration_link', formData.value.registration_link);
-    data.append('latitude', formData.value.latitude || '');
-    data.append('longitude', formData.value.longitude || '');
-    
-    // Append event files with type validation
-    selectedFiles.value.event.forEach((file, index) => {
-      if (file instanceof File) {
-        data.append(`media_files[${index}]`, file);
-      }
-    });
-  } 
-  else if (selectedType.value === 'job_posting') {
-    data.append('job_title', formData.value.job_title);
-    data.append('company_name', formData.value.company_name);
-    data.append('job_type', formData.value.job_type);
-    data.append('description', formData.value.description);
-    data.append('salary_range', formData.value.salary_range || '');
-    data.append('application_deadline', formData.value.application_deadline);
-    data.append('is_remote', formData.value.is_remote ? '1' : '0');
-    data.append('location', formData.value.location || '');
-    data.append('latitude', formData.value.latitude || '');
-    data.append('longitude', formData.value.longitude || '');
-    
-    // Append job files with type validation
-    selectedFiles.value.job.forEach((file, index) => {
-      if (file instanceof File) {
-        data.append(`media_files[${index}]`, file);
-      }
-    });
-  }
-  
   try {
+    data.append('type', selectedType.value);
+    data.append('privacy_setting', formData.value.privacy_setting);
+
+    // ✅ Extract tags safely and robustly
+let tagsArray = [];
+
+if (Array.isArray(formData.value.tags) && formData.value.tags.length > 0) {
+  tagsArray = formData.value.tags.map(tag => tag.value).filter(Boolean);
+}
+
+console.log('Extracted Tags:', tagsArray);
+data.append('tags', JSON.stringify(tagsArray));
+
+    if (selectedType.value === 'post') {
+      data.append('title', formData.value.title);
+      data.append('body', formData.value.body);
+
+    } else if (selectedType.value === 'event' || selectedType.value === 'job_posting') {
+      // 📍 If coordinates exist, fetch city/country
+      if (formData.value.latitude && formData.value.longitude) {
+        try {
+          const apiKey = "2f745fa85d563da5adb87b6cd4b81caf";
+          const response = await axios.get(
+            `https://api.openweathermap.org/data/2.5/weather?lat=${formData.value.latitude}&lon=${formData.value.longitude}&appid=${apiKey}`,
+            { timeout: 5000 }
+          );
+
+          if (response.data.name && response.data.sys?.country) {
+            data.append('city', response.data.name);
+            data.append('country', response.data.sys.country);
+            formData.value.city = response.data.name;
+            formData.value.country = response.data.sys.country;
+          }
+        } catch (error) {
+          console.error('Failed to fetch location data:', error);
+        }
+      }
+
+      if (selectedType.value === 'event') {
+        data.append('event_name', formData.value.event_name);
+        data.append('date', formData.value.date);
+        data.append('time', formData.value.time);
+        data.append('organizer_name', formData.value.organizer_name);
+        data.append('description', formData.value.description);
+        data.append('registration_link', formData.value.registration_link);
+        data.append('latitude', formData.value.latitude || '');
+        data.append('longitude', formData.value.longitude || '');
+
+        selectedFiles.value.event.forEach((file, index) => {
+          if (file instanceof File) {
+            data.append(`media_files[${index}]`, file);
+          }
+        });
+
+      } else if (selectedType.value === 'job_posting') {
+        data.append('job_title', formData.value.job_title);
+        data.append('company_name', formData.value.company_name);
+        data.append('job_type', formData.value.job_type);
+        data.append('description', formData.value.description);
+        data.append('application_deadline', formData.value.application_deadline);
+        data.append('is_remote', formData.value.is_remote ? '1' : '0');
+        data.append('location', formData.value.location || '');
+        data.append('latitude', formData.value.latitude || '');
+        data.append('longitude', formData.value.longitude || '');
+
+        selectedFiles.value.job.forEach((file, index) => {
+          if (file instanceof File) {
+            data.append(`media_files[${index}]`, file);
+          }
+        });
+      }
+    }
+
+    // 📤 Send the form data
     const response = await axios.post('/job-postings', data, {
       headers: {
         'Content-Type': 'multipart/form-data'
       },
-      validateStatus: (status) => status < 500 // Don't throw for 422 errors
+      validateStatus: status => status < 500,
+      timeout: 10000
     });
 
-    if (response.status === 201 || response.status === 200) {
-      // Success handling with toast notification instead of alert
-      showNotification({
-        type: 'success',
-        message: `${selectedType.value} created successfully!`,
-        duration: 3000
-      });
-      
+    if (response.status === 200 || response.status === 201) {
+      console.log('Raw formData.tags:', formData.value.tags);
       resetForm();
       closeModal();
-      
-      // Emit event for parent component to refresh data
       emit('content-created');
+      return;
     }
-    
-  } catch (error) {
-    console.error('API Error:', error);
 
-    if (error.response) {
-      // Server responded with error status
-      if (error.response.status === 422) {
-        // Handle validation errors
-        validationErrors.value = error.response.data.errors || {};
-        
-        // Find first error field and scroll to it
-        const firstErrorField = Object.keys(validationErrors.value)[0];
-        if (firstErrorField) {
-          const fieldElement = document.getElementById(firstErrorField);
-          if (fieldElement) {
-            fieldElement.scrollIntoView({
-              behavior: 'smooth',
-              block: 'center'
-            });
-            fieldElement.focus();
-            showGuide(firstErrorField);
-          }
-        }
-        
-        // Show toast for general error
-        showNotification({
-          type: 'error',
-          message: 'Please fix the validation errors',
-          duration: 5000
-        });
-        
-      } else {
-        // Other server errors
-        showNotification({
-          type: 'error',
-          message: error.response.data.message || `Request failed (${error.response.status})`,
-          duration: 5000
-        });
-      }
-    } else if (error.request) {
-      // No response received
-      showNotification({
-        type: 'error',
-        message: 'No response from server. Please check your connection.',
-        duration: 5000
-      });
-    } else {
-      // Request setup error
-      showNotification({
-        type: 'error',
-        message: `Request error: ${error.message}`,
-        duration: 5000
-      });
+  } catch (error) {
+    console.error('Submission Error:', error);
+
+    if (error.response?.status === 422) {
+      validationErrors.value = error.response.data.errors || {};
     }
+
+  } finally {
+    isSubmitting.value = false;
   }
 };
 
-// Helper function for notifications (add this to your methods)
-const showNotification = ({ type, message, duration }) => {
-  // Implement your preferred notification system here
-  // This could use a toast library or your custom solution
-  console.log(`[${type}] ${message}`);
-  // Example using alert for simplicity (replace with your UI solution)
-  alert(`[${type.toUpperCase()}] ${message}`);
-};
 
 const resetForm = () => {
   formData.value = {
@@ -837,7 +1190,6 @@ const resetForm = () => {
     title: '',
     body: '',
     tags: [],
-    tagsInput: '',
     event_name: '',
     date: '',
     time: '',
@@ -849,7 +1201,7 @@ const resetForm = () => {
     job_title: '',
     company_name: '',
     job_type: 'full-time',
-    salary_range: '',
+    // salary_range: '',
     application_deadline: '',
     is_remote: false,
     location: ''
@@ -862,103 +1214,358 @@ const resetForm = () => {
   
   markerPosition.value = null;
 };
-// Add to your script setup
-const currentGuide = ref(null);
-const validationErrors = ref({});
+// Computed properties
+// const isProfileComplete = computed(() => {
+//     return props.hasEducation && props.hasEmployment && 
+//            props.hasJobHunting && props.hasCompetencies && 
+//            props.hasLocation && props.hasProgramSuggestions;
+// });
 
-// Add this method
+const user = usePage().props.auth.user;
+const entities = ref(props.entities || []);
+const pagination = ref(props.pagination || {});
+
+// Methods
+const openModal = () => {
+  if (!isProfileComplete.value) return;
+  showModal.value = true;
+};
+
+const closeModal = () => {
+  showModal.value = false;
+};
+
+const selectContentType = (type) => {
+  selectedType.value = type;
+};
+
+
+const handleFileUpload = (event, type) => {
+  const files = Array.from(event.target.files);
+  selectedFiles.value[type] = files.map(file => {
+    const fileWithPreview = file;
+    if (file.type.startsWith('image/')) {
+      fileWithPreview.preview = URL.createObjectURL(file);
+    }
+    return fileWithPreview;
+  });
+};
+
+const removeFile = (type, index) => {
+  selectedFiles.value[type].splice(index, 1);
+};
+
+const onMapClick = (e) => {
+  markerPosition.value = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+  formData.value.latitude = e.latLng.lat();
+  formData.value.longitude = e.latLng.lng();
+};
+
+const onMarkerDragEnd = (e) => {
+  markerPosition.value = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+  formData.value.latitude = e.latLng.lat();
+  formData.value.longitude = e.latLng.lng();
+};
+
+
+
+// Profile completion methods
+const navigateToProfile = () => {
+    router.visit(route('profile.show', props.user.encrypted_id));
+};
+
+const navigateToEducation = () => {
+    router.visit(route('profile.educationalBackground.index', { 
+        id: page.props.encrypted_id 
+    }));
+};
+
+const navigateToEmploymentHistories = () => {
+    router.visit(route('profile.employmentHistory.index', { 
+        id: page.props.encrypted_id 
+    }));
+};
+
+const openJobHuntingModal = () => {
+    showJobHuntingModal.value = true;
+};
+
+const closeJobHuntingModal = () => {
+    showJobHuntingModal.value = false;
+};
+
+const openProgramSuggestionModal = () => {
+    showProgramSuggestionModal.value = true;
+};
+
+const closeProgramSuggestionModal = () => {
+    showProgramSuggestionModal.value = false;
+};
+
+const jobHuntingData = ref({
+    time_to_first_job: '',
+    difficulties: [],
+    other_difficulty: '',
+    job_source: '',
+    other_source: '',
+    starting_salary: ''
+});
+
+// Program Suggestion Data
+const programSuggestionData = ref({
+    suggestion_type: '',
+    description: ''
+});
+watch(() => page.props.flash, (newFlash) => {
+    if (newFlash.success) {
+        showNotification({
+            type: 'success',
+            message: newFlash.success
+        });
+    }
+    if (page.props.errors.error) {
+        showNotification({
+            type: 'error',
+            message: page.props.errors.error
+        });
+    }
+}, { deep: true });
+// Loading states
+const isSubmittingJobHunting = ref(false);
+const isSubmittingProgramSuggestion = ref(false);
+
+// Error handling
+const jobHuntingErrors = ref({});
+const programSuggestionErrors = ref({});
+
+// Submit Job Hunting Experience
+const submitJobHuntingExperience = async () => {
+    isSubmittingJobHunting.value = true;
+    jobHuntingErrors.value = {};
+    
+    try {
+        await router.post(route('profile.jobHunting.store'), {
+            ...jobHuntingData.value,
+            difficulties: jobHuntingData.value.difficulties.join(','),
+            other_difficulty: jobHuntingData.value.difficulties.includes('other') 
+                ? jobHuntingData.value.other_difficulty 
+                : null
+        }, {
+            preserveScroll: true,
+            onSuccess: () => {
+                closeJobHuntingModal();
+                resetJobHuntingForm();
+                // Success notification will be handled by the page component
+                // from the flashed session data
+            },
+            onError: (errors) => {
+                jobHuntingErrors.value = errors;
+            }
+        });
+    } catch (error) {
+        console.error('Request failed:', error);
+    } finally {
+        isSubmittingJobHunting.value = false;
+    }
+};
+
+const submitProgramSuggestion = async () => {
+    isSubmittingProgramSuggestion.value = true;
+    programSuggestionErrors.value = {};
+    
+    try {
+        await router.post(route('profile.programSuggestions.store'), {
+            ...programSuggestionData.value
+        }, {
+            preserveScroll: true,
+            onSuccess: () => {
+                closeProgramSuggestionModal();
+                resetProgramSuggestionForm();
+                // Success notification will be handled by the page component
+            },
+            onError: (errors) => {
+                programSuggestionErrors.value = errors;
+            }
+        });
+    } catch (error) {
+        console.error('Request failed:', error);
+    } finally {
+        isSubmittingProgramSuggestion.value = false;
+    }
+};
+// In your script setup
+const showUnemploymentModal = ref(false);
+const isSubmittingUnemployment = ref(false);
+const unemploymentErrors = ref({});
+
+const unemploymentReasons = [
+    { value: 'seeking', label: 'Currently seeking employment' },
+    { value: 'studying', label: 'Pursuing further studies' },
+    { value: 'family_responsibilities', label: 'Family responsibilities' },
+    { value: 'health_issues', label: 'Health issues' },
+    { value: 'not_interested', label: 'Not interested in employment' },
+    { value: 'other', label: 'Other' }
+];
+
+const unemploymentData = ref({
+    reasons: [],
+    other_reason: '',
+    has_awards: false,
+    awards_details: ''
+});
+const profileStatus = computed(() => {
+    // Determine the user's employment status
+    if (props.isCurrentlyEmployed) {
+        return 'employed';
+    } else if (props.hasUnemploymentDetails) {
+        return 'unemployed-with-details';
+    } else if (props.hasEmploymentHistory) {
+        return 'unemployed-with-history';
+    } else {
+        return 'unemployed-no-history';
+    }
+});
+
+const shouldShowEmploymentCard = computed(() => {
+    // Only show if no employment history exists at all
+    return !props.hasEmploymentHistory;
+});
+const shouldShowUnemploymentCard = computed(() => {
+    // Show if:
+    // 1. Not currently employed AND
+    // 2. Either:
+    //    a. Has past employment (end date exists) OR
+    //    b. No employment history at all
+    // 3. And hasn't filled unemployment details
+    return !props.isCurrentlyEmployed && 
+           (props.hasPastEmployment || !props.hasEmploymentHistory) &&
+           !props.hasUnemploymentDetails;
+});
+
+const shouldShowJobHuntingCard = computed(() => {
+    // Show if:
+    // 1. Not currently employed AND
+    // 2. Either has past employment or unemployment details AND
+    // 3. Doesn't have job hunting info yet
+    return !props.isCurrentlyEmployed && 
+           (props.hasPastEmployment || props.hasUnemploymentDetails) && 
+           !props.hasJobHunting;
+});
+
+const isProfileComplete = computed(() => {
+    if (props.isCurrentlyEmployed) {
+        return props.hasEducation && 
+               props.hasJobHunting && 
+               props.hasLocation && 
+               props.hasProgramSuggestions;
+    }
+    else if (props.hasUnemploymentDetails) {
+        return props.hasEducation && 
+               props.hasLocation && 
+               props.hasProgramSuggestions;
+    }
+    else if (props.hasPastEmployment) {
+        return props.hasEducation && 
+               props.hasJobHunting && 
+               props.hasLocation && 
+               props.hasProgramSuggestions;
+    }
+    else {
+        return props.hasEducation && 
+               props.hasLocation && 
+               props.hasProgramSuggestions;
+    }
+});
+
+const openUnemploymentModal = () => {
+    showUnemploymentModal.value = true;
+};
+
+const closeUnemploymentModal = () => {
+    showUnemploymentModal.value = false;
+};
+
+const submitUnemploymentDetails = async () => {
+    isSubmitting.value = true;
+    try {
+        // Send reasons as array instead of comma-separated string
+        await router.post(route('profile.unemployment.store'), {
+            unemployment_reasons: unemploymentData.value.reasons, // already an array
+            other_unemployment_reason: unemploymentData.value.reasons.includes('other') 
+                ? unemploymentData.value.other_reason 
+                : null,
+            has_awards: unemploymentData.value.has_awards,
+            awards_details: unemploymentData.value.awards_details
+        }, {
+            onSuccess: () => {
+                closeUnemploymentModal();
+                // Update local state
+                props.isUnemployed = true;
+                props.shouldShowJobHunting = false;
+                showNotification({
+                    type: 'success',
+                    message: 'Unemployment details saved successfully'
+                });
+            },
+            onError: (errors) => {
+                unemploymentErrors.value = errors;
+            }
+        });
+    } catch (error) {
+        console.error('Error:', error);
+        showNotification({
+            type: 'error',
+            message: 'Failed to save unemployment details'
+        });
+    } finally {
+        isSubmitting.value = false;
+    }
+};
+// Reset form data
+const resetJobHuntingForm = () => {
+    jobHuntingData.value = {
+        time_to_first_job: '',
+        difficulties: [],
+        other_difficulty: '',
+        job_source: '',
+        other_source: '',
+        starting_salary: ''
+    };
+};
+
+const resetProgramSuggestionForm = () => {
+    programSuggestionData.value = {
+        suggestion_type: '',
+        description: ''
+    };
+};
+
+const showNotification = ({ type, message, duration }) => {
+  console.log(`[${type}] ${message}`);
+  alert(`[${type.toUpperCase()}] ${message}`);
+};
+
 const showGuide = (fieldName) => {
   const guides = {
     'post-title': {
       title: 'Post Title',
       message: 'Keep your title concise but descriptive (5-15 words). Avoid special characters.'
     },
-    'post-content': {
-      title: 'Post Content',
-      message: 'Share your thoughts in detail. Minimum 50 characters recommended.'
-    },
-    'post-tags': {
-      title: 'Tags',
-      message: 'Add relevant tags separated by commas (e.g., "career, programming, tips"). Max 5 tags.'
-    },
-    'event-name': {
-      title: 'Event Name',
-      message: 'The official name of your event. Include organization name if applicable.'
-    },
-    'event-date': {
-      title: 'Event Date',
-      message: 'Select a future date. Events cannot be created for past dates.'
-    },
-    'event-organizer': {
-      title: 'Organizer',
-      message: 'The person or organization responsible for this event.'
-    },
-    'event-registration': {
-      title: 'Registration Link',
-      message: 'Must be a valid URL (include https://). Leave blank if no registration required.'
-    },
-    'job-title': {
-      title: 'Job Title',
-      message: 'Standard job titles work best (e.g., "Senior Frontend Developer")'
-    },
-    'job-company': {
-      title: 'Company Name',
-      message: 'The official registered name of your company'
-    },
-    'job-description': {
-      title: 'Job Description',
-      message: 'Include responsibilities, requirements, and benefits. Minimum 100 characters.'
-    },
-    'job-salary': {
-      title: 'Salary Range',
-      message: 'Format like "$50,000 - $70,000" or "Competitive salary"'
-    },
-    'job-deadline': {
-      title: 'Application Deadline',
-      message: 'Must be a future date. Applications will close automatically.'
-    },
-    'job-location': {
-      title: 'Job Location',
-      message: 'City and country, or "Remote" if location-independent'
-    },
-    'media_files': {
-      title: 'File Uploads',
-      message: 'Allowed formats: JPG, PNG, PDF, MP4, MOV, AVI. Max 10MB per file.'
-    }
+    // ... other guide definitions
   };
   
   currentGuide.value = guides[fieldName] || null;
 };
-// const onMapClick = (event) => {
-//   markerPosition.value = event.latLng.toJSON();
-//   formData.value.latitude = markerPosition.value.lat;
-//   formData.value.longitude = markerPosition.value.lng;
-// };
-
-// // Handle marker drag end to update position
-// const onMarkerDragEnd = async (event) => {
-//   const newPosition = event.latLng.toJSON();
-//   markerPosition.value = newPosition;
-//   formData.value.latitude = newPosition.lat;
-//   formData.value.longitude = newPosition.lng;
-
-//   // Fetch address from coordinates
-//   const address = await getAddressFromCoordinates(newPosition.lat, newPosition.lng);
-//   formData.value.address = address; // Store the address in the form data
-// };
-
-// Function to fetch address from coordinates using Google Maps Geocoding API
-const entities2 = ref(props.entities || []);
 
 const getAddressFromCoordinates = async (latitude, longitude) => {
   try {
-    const apiKey = 'AIzaSyDdgGammpJ-9nwjqAqWmnUhSBzbdnscs1g'; // Replace with your actual API key
+    const apiKey = 'YOUR_GOOGLE_API_KEY';
     const response = await axios.get(
       `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${apiKey}`
     );
 
     if (response.data.results && response.data.results.length > 0) {
-      return response.data.results[0].formatted_address; // Return the first result
+      return response.data.results[0].formatted_address;
     }
     return 'Address not found';
   } catch (error) {
@@ -966,35 +1573,19 @@ const getAddressFromCoordinates = async (latitude, longitude) => {
     return 'Error fetching address';
   }
 };
-const user = usePage().props.auth.user
-
-// Initialize reactive state
-const entities = ref(props.entities || []);
-const pagination = ref(props.pagination || {});
-
 
 const loadMoreData = async () => {
   try {
-    const nextPage = page.value + 1; 
+    const nextPage = pagination.value.current_page + 1; 
     const response = await axios.get('/api/feed', { params: { page: nextPage } });
 
-    props.entities.push(...response.data.entities);
-
-    page.value = nextPage;
-    hasMore.value = response.data.hasMore;
+    entities.value.push(...response.data.entities);
+    pagination.value.current_page = nextPage;
+    pagination.value.has_more = response.data.hasMore;
   } catch (error) {
     console.error('Error loading more data:', error.response?.data || error.message);
   }
 };
-
-// Determine the next page based on your pagination strategy
-const getNextPage = () => {
-  return page.value + 1;
-};
-
-const currentUser = props.current_user;
-
-const recommendedUsers = ref(props.recommendedUsers);
 
 const toggleFollow = async (targetUser) => {
   try {
@@ -1008,26 +1599,7 @@ const toggleFollow = async (targetUser) => {
   }
 };
 </script>
-<!-- 
-<script>
-export default {
-  data() {
-    return {
-      mapCenter: { lat: 10.3157, lng: 123.8854 },
-      markers: [
-        { position: { lat: 10.3157, lng: 123.8854 }, draggable: true },
-        { position: { lat: 10.3200, lng: 123.8900 }, draggable: false },
-        { position: { lat: 10.3100, lng: 123.8800 }, draggable: true },
-      ],
-    };
-  },
-  methods: {
-    onMarkerClick(marker) {
-      alert(`Marker clicked at: ${marker.position.lat}, ${marker.position.lng}`);
-    },
-  },
-};
-</script> -->
+
 
 <style scoped>
 /* Tags container */
@@ -1099,7 +1671,6 @@ export default {
 }
 
 h3 {
-  margin-top: 20px;
   font-size: 18px;
 }
 
@@ -1156,5 +1727,56 @@ label {
 .profile-photo-container{
   position: relative;
   border: solid;
+}
+.fa-spinner {
+  margin-right: 8px;
+}
+
+/* Disabled state for buttons */
+.btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+.completion-card.completed {
+  border-left: 4px solid #4CAF50;
+}
+
+.completion-card.completed .card-button {
+  background-color: #4CAF50;
+}
+/* Add this to your CSS */
+.vue-input-tag-wrapper {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 4px 8px;
+  min-height: 38px;
+}
+
+.vue-input-tag-wrapper .input-tag {
+  background-color: #e0f2fe;
+  border: 1px solid #bae6fd;
+  border-radius: 2px;
+  padding: 2px 6px;
+  margin-right: 4px;
+  margin-bottom: 4px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.vue-input-tag-wrapper .input-tag .remove {
+  color: #7dd3fc;
+  margin-left: 4px;
+  cursor: pointer;
+}
+
+.vue-input-tag-wrapper .input-tag .remove:hover {
+  color: #0ea5e9;
+}
+
+.vue-input-tag-wrapper .new-tag {
+  border: none;
+  outline: none;
+  padding: 4px;
+  min-width: 80px;
 }
 </style>

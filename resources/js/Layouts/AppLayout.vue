@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted} from 'vue';
+import { ref, onMounted, computed} from 'vue';
 import { Head, Link, router, usePage  } from '@inertiajs/vue3';
 import ApplicationMark from '@/Components/ApplicationMark.vue';
 import Banner from '@/Components/Banner.vue';
@@ -9,8 +9,11 @@ import NavLink from '@/Components/NavLink.vue';
 import ResponsiveNavLink from '@/Components/ResponsiveNavLink.vue';
 import FollowSuggestions from '@/Components/FollowSuggestions.vue';
 import 'https://cdn.lordicon.com/lordicon.js';
-import { computed } from 'vue';
 import ToastNotification from '@/Components/ToastNotification.vue';
+import ChatBox from '@/Components/ChatBox.vue';
+import { useChatStore } from '@/Stores/chatStore';
+
+const chatStore = useChatStore();
 
 const user = usePage().props.auth.user;
 const showFeedbackModal = ref(false);
@@ -92,14 +95,71 @@ const optOutOfFeedback = async () => {
 const logout = () => {
     router.post(route('logout'));
 };
+const themeColors = computed(() => usePage().props.themeColors || {
+    primary: '#ff8c00',
+    primary_light: 'rgba(255, 140, 0, 0.1)',
+    text_primary: '#ffffff',
+    text_secondary: '#cccccc',
+    bg_dark: '#1a1a1a',
+    bg_darker: '#121212',
+    card_bg: 'rgba(40, 40, 40, 0.7)',
+    card_border: 'rgba(255, 255, 255, 0.1)'
+});
+
+const showTransition = ref(false);
+const animationComplete = ref(false);
+
+// Get user data
+
+// Check if we should show the transition
+const shouldShowTransition = computed(() => {
+    if (!user?.last_seen_at) return true; // First visit
+    
+    const lastSeen = new Date(user.last_seen_at);
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+    
+    return lastSeen < thirtyMinutesAgo; // Not seen in last 30 mins
+});
+
+// Run the animation if needed
+onMounted(() => {
+    if (shouldShowTransition.value) {
+        showTransition.value = true;
+        setTimeout(() => {
+            animationComplete.value = true;
+        }, 2000); // Animation duration
+    }
+});
 </script>
 
 <template>
-     <div class="body">
+     <div :style="{
+        '--primary': themeColors.primary,
+        '--primary-light': themeColors.primary_light,
+        '--text-primary': themeColors.text_primary,
+        '--text-secondary': themeColors.text_secondary,
+        '--bg-dark': themeColors.bg_dark,
+        '--bg-darker': themeColors.bg_darker,
+        '--card-bg': themeColors.card_bg,
+        '--card-border': themeColors.card_border
+    }"></div>
+                <transition name="fade">
+        <div v-if="showTransition && !animationComplete" class="transition-overlay">
+            <div class="animation-container">
+                <ApplicationMark class="animated-logo" />
+                <div class="loading-bar">
+                    <div class="loading-progress"></div>
+                </div>
+            </div>
+        </div>
+    </transition>
+     <div class="body" :class="{ 'blur-content': showTransition && !animationComplete }">
 <!-- 
         <Head :title="title" />
 
         <Banner /> -->
+<MessageFloater />
+
         <ToastNotification ref="toast" />
         <button class="mobile-menu-toggle">
     <i class="fas fa-bars"></i>
@@ -108,14 +168,19 @@ const logout = () => {
   <!-- Mobile Search -->
   <div class="mobile-search">
     <i class="fas fa-search mobile-search-icon"></i>
-    <input type="text" placeholder="Search Threads">
+    <input type="text" placeholder="Search">
     <button class="close-search">
       <i class="fas fa-times"></i>
     </button>
   </div>
   
         <div class="container">
-
+<ChatBox
+            v-for="(chatUser, index) in chatStore.openChats"
+            :key="chatUser.id"
+            :user="chatUser"
+            :index="index"
+        />
 
     <div class="left-nav">
       <Link :href="`/job-postings`">
@@ -148,10 +213,10 @@ const logout = () => {
       </div>
     </Link>
 
-        <div class="nav-item">
+        <!-- <div class="nav-item">
           <i class="fas fa-bookmark"></i>
           <span>Bookmarks</span>
-        </div>
+        </div> -->
         <Link :href="route('profile.show', $page.props.auth.user.encrypted_id)" class="nav-link">
       <div :class="['nav-item', { 'active': $page.url.startsWith('/profile') }]">
         <i class="fas fa-user"></i>
@@ -159,10 +224,10 @@ const logout = () => {
       </div>
     </Link>
         
-        <div class="nav-item">
+        <!-- <div class="nav-item">
           <i class="fas fa-ellipsis-h"></i>
           <span>More</span>
-        </div>
+        </div> -->
       </div>
       
       <!-- <button class="post-button">Post</button> -->
@@ -198,7 +263,7 @@ const logout = () => {
              <div class="right-sidebar">
       <div class="search-bar">
         <i class="fas fa-search search-icon"></i>
-        <input type="text" placeholder="Search Threads">
+        <input type="text" placeholder="Search">
       </div>
       
       <div class="card trending-card">
@@ -245,7 +310,7 @@ const logout = () => {
         <a href="#" class="footer-link">Accessibility</a>
         <a href="#" class="footer-link">Ads info</a>
         <a href="#" class="footer-link">More</a>
-        <span class="footer-link">© 2023 Threads</span>
+        <span class="footer-link">© 2023 eTraCCS</span>
       </div>
     </div>
         </div>
@@ -431,7 +496,7 @@ const logout = () => {
     padding: 10px 20px;
     background: none;
     border: none;
-    color: var(--text-secondary);
+    /* color: var(--text-secondary); */
     font-weight: 500;
     cursor: pointer;
     position: relative;
@@ -685,5 +750,115 @@ const logout = () => {
     font-size: 3rem;
     color: var(--success);
     margin-bottom: 1rem;
+}
+.transition-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--primary);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 999999;
+    flex-direction: column;
+}
+
+.animation-container {
+    text-align: center;
+    animation: fadeIn 0.5s ease-out;
+}
+
+.logo-animation {
+    margin-bottom: 30px;
+}
+
+.animated-logo {
+    animation: pulse 1.5s infinite alternate, float 3s ease-in-out infinite;
+    transform-origin: center;
+    width: 120px;
+    height: 120px;
+}
+
+.loading-bar {
+    width: 200px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.loading-progress {
+    height: 100%;
+    width: 0;
+    background: white;
+    animation: loading 2s ease-in-out forwards;
+}
+
+.transition-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--primary);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    flex-direction: column;
+}
+
+.animation-container {
+    text-align: center;
+}
+
+.animated-logo {
+    width: 100px;
+    height: 100px;
+    animation: pulse 1.5s infinite alternate;
+}
+
+.loading-bar {
+    width: 200px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    margin-top: 20px;
+    overflow: hidden;
+}
+
+.loading-progress {
+    height: 100%;
+    width: 0;
+    background: white;
+    animation: loading 2s linear forwards;
+}
+
+/* Effects */
+.blur-content {
+    filter: blur(2px);
+    pointer-events: none;
+}
+
+/* Animations */
+@keyframes pulse {
+    0% { transform: scale(1); opacity: 0.8; }
+    100% { transform: scale(1.1); opacity: 1; }
+}
+
+@keyframes loading {
+    0% { width: 0; }
+    100% { width: 100%; }
+}
+
+.fade-enter-active,
+.fade-leave-active {
+    transition: opacity 0.5s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+    opacity: 0;
 }
 </style>

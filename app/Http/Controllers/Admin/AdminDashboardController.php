@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Auth;
 use App\Http\Controllers\Controller;
 use Inertia\Inertia;
 
-class AuthenticatedSessionController extends Controller
+class AuthenticatedDasController extends Controller
 {
     public function create()
     {

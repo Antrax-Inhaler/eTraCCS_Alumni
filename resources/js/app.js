@@ -8,22 +8,29 @@ import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 import VueGoogleMaps from '@fawmi/vue-google-maps';
 import '@fortawesome/fontawesome-free/css/all.css';
 
+import { createPinia } from 'pinia'; // ✅ Add this
+
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
 createInertiaApp({
     title: (title) => `${title} - ${appName}`,
     resolve: (name) => resolvePageComponent(`./Pages/${name}.vue`, import.meta.glob('./Pages/**/*.vue')),
     setup({ el, App, props, plugin }) {
-        return createApp({ render: () => h(App, props) })
+        const app = createApp({ render: () => h(App, props) });
+
+        app
             .use(plugin)
             .use(ZiggyVue)
+            .use(createPinia()) // ✅ Register Pinia here
             .use(VueGoogleMaps, {
                 load: {
-                    key: 'AIzaSyCHX8R7Dty7yOx-DXRnIK8O51WovSyq08g',
-                    libraries: 'places', // This is required if you use the Autocomplete plugin
+                    key: 'AIzaSyDhDxk7K-eY-Evo5-TPFj8iVacRXbsv1Ss',
+                    libraries: 'places',
                 },
             })
             .mount(el);
+
+        return app; // ✅ Return the created app instance
     },
     progress: {
         color: '#4B5563',

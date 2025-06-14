@@ -4,10 +4,16 @@ import { ref, onMounted, onUnmounted } from 'vue';;
 import { router } from '@inertiajs/vue3';
 import dayjs from 'dayjs';
 import Timeline from './Timeline.vue';
-
+import { useMessageStore } from '@/Stores/messageStore';
 import { Link } from '@inertiajs/vue3';
+import { useChatStore } from '@/Stores/chatStore';
 
+const chatStore = useChatStore();
 
+const messageStore = useMessageStore();
+function navigateToChat() {
+    chatStore.openChat(props.user);
+}
 const getEmploymentTypeClass = (type) => {
   if (!type) return '';
   return `employment-type-${type.toLowerCase().replace('_', '-')}`;
@@ -25,6 +31,7 @@ const formatEmploymentType = (type) => {
   return types[type] || type;
 };
 const props = defineProps({
+  
   entities: {
     type: Array,
     required: true,
@@ -213,6 +220,7 @@ const handleKeyDown = (event) => {
     }
 };
 
+
 // Add event listeners
 onMounted(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -288,6 +296,7 @@ const downloadImage = () => {
     link.click();
     document.body.removeChild(link);
 };
+
 onMounted(() => {
   switchTab('about');
 });
@@ -301,7 +310,8 @@ onMounted(() => {
   <div class="card profile-header">
     <div class="cover-photo-container">
       <div class="cover-photo">
-        <img :src="user.cover_photo" :alt="user.full_name" @error="handleImageError" alt="Cover Photo">
+        <div :style="{ backgroundImage: `url(${user.cover_photo})` }"></div>
+        <img :src="user.cover_photo">
         <div class="cover-gradient"></div>
       </div>
 
@@ -319,7 +329,7 @@ onMounted(() => {
         </div>
         
       </div>
-      <div class="profile-actions">
+<div class="profile-actions"> 
   <button 
     v-if="user.id !== auth_user_id" 
     @click="toggleFollow" 
@@ -335,10 +345,15 @@ onMounted(() => {
     </button>
   </Link>
   
-  <button class="action-button secondary-button">
+  <button 
+    v-if="user.id !== auth_user_id"
+    class="action-button secondary-button"
+    @click="navigateToChat"
+  >
     <i class="fas fa-envelope"></i> Message
   </button>
 </div>
+
 
       <div class="profile-details">
         <h1 class="profile-name">
@@ -366,15 +381,15 @@ onMounted(() => {
         <div class="profile-stats">
     <div class="stat-item">
       <span class="stat-number">{{ formatNumber(stats.post_count) }}</span>
-      <span class="stat-label">Posts</span>
+      <span class="stat-label"  @click="switchTab('posts')">Posts</span>
     </div>
     <div class="stat-item" @click="showFollowers">
       <span class="stat-number">{{ formatNumber(stats.followers_count) }}</span>
-      <span class="stat-label">Followers</span>
+      <span class="stat-label" @click="switchTab('friends')">Followers</span>
     </div>
     <div class="stat-item" @click="showFollowing">
       <span class="stat-number">{{ formatNumber(stats.following_count) }}</span>
-      <span class="stat-label">Following</span>
+      <span class="stat-label" @click="switchTab('friends')">Following</span>
     </div>
   </div>
       </div>
@@ -397,7 +412,7 @@ onMounted(() => {
                @click="switchTab('posts')">
             <i class="fas fa-stream"></i>
             <span class="nav-text">Posts</span>
-            <!-- <span class="nav-count">{{ formatNumber(stats.post_count) }}</span> -->
+            <span class="nav-count">{{ formatNumber(stats.post_count) }}</span>
           </div>
           <div class="nav-item" 
                :class="{ active: activeTab === 'photos' }" 
@@ -405,7 +420,7 @@ onMounted(() => {
                @click="switchTab('photos')">
             <i class="fas fa-image"></i>
             <span class="nav-text">Photos</span>
-            <!-- <span class="nav-count">{{ photos.length }}</span> -->
+            <span class="nav-count">{{ photos.length }}</span>
           </div>
           <div class="nav-item" 
                :class="{ active: activeTab === 'friends' }" 
@@ -592,8 +607,8 @@ onMounted(() => {
     </button>
   </div>
   
-  <div v-if="trainingAttendeds?.length > 0" class="training-grid">
-    <div class="training-card" v-for="training in trainingAttendeds" :key="training.id">
+  <div v-if="trainingsAttended?.length > 0" class="training-grid">
+    <div class="training-card" v-for="training in trainingsAttended">
       <div class="training-header">
         <div class="training-icon">
           <i class="fas fa-chalkboard-teacher"></i>
@@ -1189,26 +1204,7 @@ onMounted(() => {
     right: 10px;
 }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
-    .download-preview {
-        top: -35px;
-        right: 45px;
-        width: 32px;
-        height: 32px;
-        font-size: 16px;
-    }
-}
 
-@media (max-width: 480px) {
-    .download-preview {
-        top: -30px;
-        right: 40px;
-        width: 28px;
-        height: 28px;
-        font-size: 14px;
-    }
-}
 .employment-timeline {
   position: relative;
   padding-left: 30px;
@@ -1265,5 +1261,31 @@ onMounted(() => {
   color: #666;
   margin-bottom: 5px;
 }
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .download-preview {
+        top: -35px;
+        right: 45px;
+        width: 32px;
+        height: 32px;
+        font-size: 16px;
+    }
+        .nav-count{
+      display: none !important;
+    }
 
+}
+
+@media (max-width: 480px) {
+    .download-preview {
+        top: -30px;
+        right: 40px;
+        width: 28px;
+        height: 28px;
+        font-size: 14px;
+    }
+    .nav-count{
+      display: none !important;
+    }
+}
 </style>

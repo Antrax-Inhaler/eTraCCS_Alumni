@@ -572,4 +572,15 @@ tr:hover td {
         grid-template-columns: 1fr;
     }
 }
+option {
+      background-color: var(--bg-dark);
+      color: var(--text-secondary);
+    }
+
+    /* Optional: style on focus */
+    select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 5px var(--primary-light);
+    }
 </style>

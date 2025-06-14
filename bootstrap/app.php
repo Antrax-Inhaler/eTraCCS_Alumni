@@ -27,10 +27,11 @@ return Application::configure(basePath: dirname(__DIR__))
 
         ]);
         
-
+        $middleware->web(append: [
+            \App\Http\Middleware\ApplyTheme::class,
+        ]);
         // No need to append VerifyCsrfToken globally; it's already included in the 'web' group
     })
-    
     ->withExceptions(function (Exceptions $exceptions) {
         //
     })

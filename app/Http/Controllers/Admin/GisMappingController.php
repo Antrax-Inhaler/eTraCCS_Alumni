@@ -14,53 +14,65 @@ class GisMappingController extends Controller
 {
     public function index(Request $request)
     {
-        // Get all alumni locations with user data
-        $alumniLocations = AlumniLocation::with(['user' => function($query) {
-            $query->select('id', 'name', 'email', 'profile_photo_path');
-        }])->get();
+        // Get all alumni with their locations and current employment
+        $alumni = User::with(['location', 'currentEmployment.company'])
+            ->has('location')
+            ->get()
+            ->map(function ($user) {
+                return [
+                    'id' => $user->id,
+                    'name' => $user->full_name,
+                    'email' => $user->email,
+                    'photo' => $user->profile_photo_url,
+                    'lat' => $user->location->latitude,
+                    'lng' => $user->location->longitude,
+                    'city' => $user->location->city,
+                    'country' => $user->location->country,
+                    'current_company' => $user->currentEmployment ? [
+                        'id' => $user->currentEmployment->company_id,
+                        'name' => optional($user->currentEmployment->company)->name
+                    ] : null,
+                    'current_job_title' => $user->currentEmployment ? $user->currentEmployment->job_title : null
+                ];
+            });
 
-        // Get all companies
-        $companies = Company::all();
+        // Get all companies with their alumni employees
+        $companies = Company::with(['employees' => function($query) {
+            $query->select('users.id', 'users.name', 'users.email', 'users.profile_photo_path')
+        ->wherePivotNull('end_date');
+        }])->get()->map(function ($company) {
+            return [
+                'id' => $company->id,
+                'name' => $company->name,
+                'lat' => $company->latitude,
+                'lng' => $company->longitude,
+                'industry' => $company->industry,
+                'city' => $company->city,
+                'country' => $company->country,
+                'employee_count' => $company->employees->count(),
+                'employees' => $company->employees->map(function ($employee) {
+                    return [
+                        'id' => $employee->id,
+                        'name' => $employee->name,
+                        'email' => $employee->email,
+                        'photo' => $employee->profile_photo_url
+                    ];
+                })
+            ];
+        });
 
         // Get employment data for heatmap
         $employmentData = EmploymentHistory::with(['company', 'user'])
             ->whereNotNull('company_id')
+            ->whereNull('end_date')
             ->get()
             ->groupBy('company_id');
 
         // Prepare data for the map
-        $mapData = [
-            'alumni' => $alumniLocations->map(function ($location) {
-                return [
-                    'id' => $location->user_id,
-                    'name' => $location->user->name,
-                    'email' => $location->user->email,
-                    'photo' => $location->user->profile_photo_url,
-                    'lat' => $location->latitude,
-                    'lng' => $location->longitude,
-                    'city' => $location->city,
-                    'country' => $location->country
-                ];
-            }),
-            'companies' => $companies->map(function ($company) use ($employmentData) {
-                $employees = $employmentData->get($company->id, collect())->count();
-                return [
-                    'id' => $company->id,
-                    'name' => $company->name,
-                    'lat' => $company->latitude,
-                    'lng' => $company->longitude,
-                    'industry' => $company->industry,
-                    'employee_count' => $employees,
-                    'city' => $company->city,
-                    'country' => $company->country
-                ];
-            }),
-            'industries' => $companies->groupBy('industry')->map->count(),
-            'regions' => $alumniLocations->groupBy('country')->map->count()
-        ];
-
         return Inertia::render('Admin/GisMapping', [
-            'mapData' => $mapData,
+            'alumniData' => $alumni,
+            'companiesData' => $companies,
+            'employmentData' => $employmentData,
             'filters' => $request->only(['industry', 'country', 'radius', 'search'])
         ]);
     }

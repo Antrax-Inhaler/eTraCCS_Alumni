@@ -8,7 +8,10 @@ use App\Models\User;
 use App\Models\EducationalBackground;
 use Illuminate\Support\Facades\Auth;
 use App\Models\Message;
+use App\Models\Chat;
 use App\Models\Attachment;
+use App\Models\ConversationParticipant;
+use Inertia\Inertia;
 use Illuminate\Support\Facades\Log;
 
 class ChatController extends Controller
@@ -91,7 +94,39 @@ class ChatController extends Controller
             ],
         ]);
     }
-    
+    public function start(User $user)
+    {
+        // You can pass the target user to the chat view
+        return Inertia::render('Chat/ChatBox', [
+            'user' => $user,
+        ]);
+    }
+    public function getMessages(User $user)
+{
+    $authUserId = auth()->id();
+
+    $messages = Chat::where(function($query) use ($authUserId, $user) {
+        $query->where('sender_id', $authUserId)->where('receiver_id', $user->id);
+    })->orWhere(function($query) use ($authUserId, $user) {
+        $query->where('sender_id', $user->id)->where('receiver_id', $authUserId);
+    })->orderBy('created_at', 'asc')->get();
+
+    return back()->with('messages', $messages);
+}
+
+
+
+public function send(Request $request)
+{
+    $chat = Chat::create([
+        'sender_id' => auth()->id(),
+        'receiver_id' => $request->receiver_id,
+        'message' => $request->message,
+    ]);
+
+    return back();
+}
+
     public function fetchConversations(Request $request)
     {
         // Fetch conversations with participants and the latest message
@@ -146,44 +181,43 @@ public function showConversation($encryptedId)
         abort(404, 'Conversation not found.');
     }
 }
-    public function sendMessage(Request $request)
-    {
-        $request->validate([
-            'conversation_id' => 'required|exists:conversations,id',
-            'content' => 'nullable|string', // Optional if only sending attachments
-            'reply_to_message_id' => 'nullable|exists:messages,id',
-            'attachments' => 'nullable|array',
-            'attachments.*' => 'file|mimes:jpeg,png,jpg,gif,mp4,pdf|max:10240', // Max 10MB
-        ]);
+    // public function sendMessage(Request $request)
+    // {
+    //     $request->validate([
+    //         'conversation_id' => 'required|exists:conversations,id',
+    //         'content' => 'nullable|string', // Optional if only sending attachments
+    //         'reply_to_message_id' => 'nullable|exists:messages,id',
+    //         'attachments' => 'nullable|array',
+    //         'attachments.*' => 'file|mimes:jpeg,png,jpg,gif,mp4,pdf|max:10240', // Max 10MB
+    //     ]);
 
-        // Create the message
-        $message = Message::create([
-            'conversation_id' => $request->input('conversation_id'),
-            'sender_id' => Auth::id(),
-            'content' => $request->input('content'),
-            'reply_to_message_id' => $request->input('reply_to_message_id'),
-        ]);
+    //     // Create the message
+    //     $message = Message::create([
+    //         'conversation_id' => $request->input('conversation_id'),
+    //         'sender_id' => Auth::id(),
+    //         'content' => $request->input('content'),
+    //         'reply_to_message_id' => $request->input('reply_to_message_id'),
+    //     ]);
 
-        // Handle attachments
-        if ($request->hasFile('attachments')) {
-            foreach ($request->file('attachments') as $file) {
-                $filePath = $file->store('attachments', 'public'); // Store file in storage/app/public/attachments
-                $fileType = match ($file->getMimeType()) {
-                    'image/jpeg', 'image/png', 'image/gif' => 'image',
-                    'video/mp4' => 'video',
-                    default => 'document',
-                };
+    //     // Handle attachments
+    //     if ($request->hasFile('attachments')) {
+    //         foreach ($request->file('attachments') as $file) {
+    //             $filePath = $file->store('attachments', 'public'); // Store file in storage/app/public/attachments
+    //             $fileType = match ($file->getMimeType()) {
+    //                
+    //                 default => 'document',
+    //             };
 
-                Attachment::create([
-                    'message_id' => $message->id,
-                    'file_path' => $filePath,
-                    'file_type' => $fileType,
-                ]);
-            }
-        }
+    //             Attachment::create([
+    //                 'message_id' => $message->id,
+    //                 'file_path' => $filePath,
+    //                 'file_type' => $fileType,
+    //             ]);
+    //         }
+    //     }
 
-        return response()->json($message->load('attachments'));
-    }
+    //     return response()->json($message->load('attachments'));
+    // }
     /**
      * Create or fetch a global chat room.
      *
@@ -330,51 +364,51 @@ public function showConversation($encryptedId)
             return response()->json(['error' => 'Failed to create group chat'], 500);
         }
     }
-    public function fetchMessages(Request $request, $conversationId)
-    {
-        // Get query parameters
-        $page = $request->input('page', 1); // Current page
-        $perPage = $request->input('per_page', 20); // Number of messages per page
+    // public function fetchMessages(Request $request, $conversationId)
+    // {
+    //     // Get query parameters
+    //     $page = $request->input('page', 1); // Current page
+    //     $perPage = $request->input('per_page', 20); // Number of messages per page
     
-        // Fetch paginated messages for the conversation in descending order
-        $messages = Message::where('conversation_id', $conversationId)
-            ->with(['sender' => function ($query) {
-                $query->select('id', 'name', 'profile_photo_path'); // Include only necessary fields
-            }, 'attachments'])
-            ->orderBy('created_at', 'desc') // Reverse chronological order
-            ->paginate($perPage, ['*'], 'page', $page);
+    //     // Fetch paginated messages for the conversation in descending order
+    //     $messages = Message::where('conversation_id', $conversationId)
+    //         ->with(['sender' => function ($query) {
+    //             $query->select('id', 'name', 'profile_photo_path'); // Include only necessary fields
+    //         }, 'attachments'])
+    //         ->orderBy('created_at', 'desc') // Reverse chronological order
+    //         ->paginate($perPage, ['*'], 'page', $page);
     
-        // Format the response
-        return response()->json([
-            'data' => $messages->map(function ($message) {
-                return [
-                    'id' => $message->id,
-                    'content' => $message->content,
-                    'sender_id' => $message->sender_id,
-                    'sender_name' => $message->sender->name,
-                    'sender_profile_picture' => $message->sender->profile_photo_path
-                        ? '/storage/' . $message->sender->profile_photo_path
-                        : null,
-                    'attachments' => $message->attachments->map(function ($attachment) {
-                        return [
-                            'file_type' => $attachment->file_type,
-                            'file_path' => $attachment->file_path,
-                        ];
-                    }),
-                    'status' => $message->status,
-                    'reply_to_message_id' => $message->reply_to_message_id,
-                    'created_at' => $message->created_at,
-                ];
-            }),
-            'pagination' => [
-                'current_page' => $messages->currentPage(),
-                'last_page' => $messages->lastPage(),
-                'total' => $messages->total(),
-                'per_page' => $messages->perPage(),
-                'has_more' => $messages->hasMorePages(),
-            ],
-        ]);
-    }
+    //     // Format the response
+    //     return response()->json([
+    //         'data' => $messages->map(function ($message) {
+    //             return [
+    //                 'id' => $message->id,
+    //                 'content' => $message->content,
+    //                 'sender_id' => $message->sender_id,
+    //                 'sender_name' => $message->sender->name,
+    //                 'sender_profile_picture' => $message->sender->profile_photo_path
+    //                     ? '/storage/' . $message->sender->profile_photo_path
+    //                     : null,
+    //                 'attachments' => $message->attachments->map(function ($attachment) {
+    //                     return [
+    //                         'file_type' => $attachment->file_type,
+    //                         'file_path' => $attachment->file_path,
+    //                     ];
+    //                 }),
+    //                 'status' => $message->status,
+    //                 'reply_to_message_id' => $message->reply_to_message_id,
+    //                 'created_at' => $message->created_at,
+    //             ];
+    //         }),
+    //         'pagination' => [
+    //             'current_page' => $messages->currentPage(),
+    //             'last_page' => $messages->lastPage(),
+    //             'total' => $messages->total(),
+    //             'per_page' => $messages->perPage(),
+    //             'has_more' => $messages->hasMorePages(),
+    //         ],
+    //     ]);
+    // }
     // Add this new method to your controller
 public function fetchNewMessages(Request $request)
 {
@@ -466,19 +500,19 @@ public function markMessagesAsDelivered(Request $request, $conversationId)
 
     return response()->json(['message' => 'Messages marked as delivered']);
 }
-public function markMessagesAsSeen(Request $request, $conversationId)
-{
-    $request->validate([
-        'message_ids' => 'required|array',
-        'message_ids.*' => 'exists:messages,id',
-    ]);
+// public function markMessagesAsSeen(Request $request, $conversationId)
+// {
+//     $request->validate([
+//         'message_ids' => 'required|array',
+//         'message_ids.*' => 'exists:messages,id',
+//     ]);
 
-    Message::whereIn('id', $request->input('message_ids'))
-        ->where('conversation_id', $conversationId)
-        ->update(['status' => 'seen']);
+//     Message::whereIn('id', $request->input('message_ids'))
+//         ->where('conversation_id', $conversationId)
+//         ->update(['status' => 'seen']);
 
-    return response()->json(['message' => 'Messages marked as seen']);
-}
+//     return response()->json(['message' => 'Messages marked as seen']);
+// }
 public function longPollMessages(Request $request)
 {
     $request->validate([
@@ -521,4 +555,171 @@ public function longPollMessages(Request $request)
         'last_message_id' => $request->last_message_id,
     ]);
 }
+public function fetchMessages(User $user)
+{
+    $authId = auth()->id();
+    $lastMessageId = request('last_id');
+
+    // Find conversation between authenticated user and target user
+    $conversation = Conversation::where('type', 'personal')
+        ->whereHas('participants', fn($q) => $q->where('user_id', $authId))
+        ->whereHas('participants', fn($q) => $q->where('user_id', $user->id))
+        ->first();
+
+    if (!$conversation) {
+        return response()->json(['messages' => []]);
+    }
+
+    // Build query for fetching messages
+    $query = Message::where('conversation_id', $conversation->id)
+        ->orderBy('id');
+
+    if ($lastMessageId) {
+        $query->where('id', '>', $lastMessageId);
+    }
+
+    // Fetch messages with relationships
+    $messages = $query->with(['attachments', 'sender'])->get();
+
+    // Mark outgoing messages (from auth user) as delivered
+    if ($messages->isNotEmpty()) {
+        Message::where('conversation_id', $conversation->id)
+            ->where('sender_id', $authId)
+            ->where('status', 'sent')
+            ->where('id', '<=', $messages->last()->id)
+            ->update(['status' => 'delivered']);
+    }
+
+    // Format the messages
+    $formattedMessages = $messages->map(function ($message) use ($authId) {
+        return [
+            'id' => $message->id,
+            'sender_id' => $message->sender_id,
+            'is_current_user' => $message->sender_id === $authId,
+            'content' => $message->content,
+            'created_at' => $message->created_at,
+            'status' => $message->status, // Include status in response
+            'attachments' => $message->attachments->map(function ($attachment) {
+                return [
+                    'id' => $attachment->id,
+                    'file_path' => asset('storage/' . $attachment->file_path),
+                    'file_type' => $attachment->file_type,
+                ];
+            }),
+            'sender_name' => $message->sender?->name,
+            'sender_profile_photo_url' => $message->sender?->profile_photo_url,
+        ];
+    });
+
+    return response()->json([
+        'messages' => $formattedMessages,
+        'auth_user_id' => $authId,
+    ]);
+}
+
+public function sendMessage(Request $request, User $user)
+{
+    $request->validate([
+        'message' => 'nullable|string',
+        'attachments.*' => 'file|max:51200' // max 10MB per file
+    ]);
+
+    $authId = auth()->id();
+
+    // Check for an existing personal conversation between these two users
+    $conversation = Conversation::where('type', 'personal')
+        ->whereHas('participants', function ($q) use ($authId) {
+            $q->where('user_id', $authId);
+        })
+        ->whereHas('participants', function ($q) use ($user) {
+            $q->where('user_id', $user->id);
+        })
+        ->first();
+
+    // Create conversation if not exists
+    if (!$conversation) {
+        $conversation = Conversation::create([
+            'type' => 'personal',
+            'created_by' => $authId,
+        ]);
+
+        ConversationParticipant::insert([
+            ['conversation_id' => $conversation->id, 'user_id' => $authId, 'joined_at' => now()],
+            ['conversation_id' => $conversation->id, 'user_id' => $user->id, 'joined_at' => now()],
+        ]);
+    }
+
+    // Save the message (even if it's just an attachment)
+    $message = Message::create([
+        'conversation_id' => $conversation->id,
+        'sender_id' => $authId,
+        'content' => $request->message ?? '',
+        'status' => 'sent',
+    ]);
+
+    // Handle attachments if any
+    if ($request->hasFile('attachments')) {
+        foreach ($request->file('attachments') as $file) {
+            $filePath = $file->store('attachments', 'public'); // Store in storage/app/public/attachments
+
+            $mime = $file->getMimeType();
+            $fileType = match (true) {
+                str_starts_with($mime, 'image/') => 'image',
+                str_starts_with($mime, 'video/') => 'video',
+                default => 'document',
+            };
+
+            Attachment::create([
+                'message_id' => $message->id,
+                'file_path' => $filePath,
+                'file_type' => $fileType,
+            ]);
+        }
+    }
+
+    return response()->json([
+        'id' => $message->id,
+        'sender_id' => $message->sender_id,
+        'content' => $message->content,
+        'created_at' => $message->created_at,
+        'attachments' => $message->attachments ?? [],
+    ]);
+}
+
+public function markAsSeen(User $user)
+{
+    $authId = auth()->id();
+
+    $conversation = Conversation::where('type', 'personal')
+        ->whereHas('participants', fn($q) => $q->where('user_id', $authId))
+        ->whereHas('participants', fn($q) => $q->where('user_id', $user->id))
+        ->first();
+
+    if (!$conversation) {
+        return response()->json(['error' => 'Conversation not found'], 404);
+    }
+
+    // Mark all messages from the other user as seen
+    Message::where('conversation_id', $conversation->id)
+        ->where('sender_id', '!=', $authId)
+        ->where('status', '!=', 'seen')
+        ->update(['status' => 'seen']);
+
+    return response()->json(['success' => true]);
+}
+public function getMessageStatuses(Request $request)
+{
+    $ids = $request->query('ids');
+    if (!$ids) return response()->json(['statuses' => []]);
+
+    $messageIds = explode(',', $ids);
+    $statuses = Message::whereIn('id', $messageIds)
+        ->where('sender_id', auth()->id())
+        ->get(['id', 'status']);
+
+    return response()->json([
+        'statuses' => $statuses
+    ]);
+}
+
 }

@@ -57,10 +57,8 @@ watch([degreeLevel, certification, training], () => {
 </script>
 
 <template>
-    <AdminLayout>
+    <AdminLayout title="Educational Tracking System">
         <div class="main-content">
-            <h1 class="page-title">Educational Tracking System</h1>
-
             <!-- Search and Filters -->
             <div class="data-section">
                 <div class="filter-grid">
@@ -327,20 +325,24 @@ watch([degreeLevel, certification, training], () => {
     display: flex;
     border-bottom: 1px solid var(--card-border);
     margin-bottom: 20px;
+    color: var(--text-primary);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+    
 }
 
 .tab-nav button {
     padding: 10px 20px;
     background: none;
     border: none;
-    color: var(--text-secondary);
     font-weight: 500;
     cursor: pointer;
     position: relative;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
 }
 
 .tab-nav button.active {
     color: var(--primary);
+    text-shadow: none;
 }
 
 .tab-nav button.active::after {
@@ -538,4 +540,15 @@ watch([degreeLevel, certification, training], () => {
         align-self: flex-end;
     }
 }
+option {
+      background-color: var(--bg-dark);
+      color: var(--text-secondary);
+    }
+
+    /* Optional: style on focus */
+    select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 5px var(--primary-light);
+    }
 </style>

@@ -31,9 +31,10 @@ const submit = () => {
 
     <div class="register-container">
         <div class="register-header">
-            <div class="logo">
+            <!-- <div class="logo">
                 <AuthenticationCardLogo />
-            </div>
+            </div> -->
+            <div  class="logo">eTraCCS</div>
             <h2 class="register-title">Welcome back</h2>
             <p class="register-subtitle">Log in to your account</p>
         </div>

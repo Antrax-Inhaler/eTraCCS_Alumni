@@ -90,4 +90,10 @@ public function toggleFollow(User $user)
         return response()->json(['is_following' => true]);
     }
 }
+// In your UserController.php
+public function updateLastSeen()
+{
+    auth()->user()->update(['last_seen_at' => now()]);
+    return back();
+}
 }
