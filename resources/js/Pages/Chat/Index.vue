@@ -1,1314 +1,1275 @@
 <template>
-  <div class="chat-container">
-    <!-- Conversation List -->
-    <div class="conversation-list">
-      <h3>Conversations</h3>
-      <ul>
-        <li
-    v-for="conversation in paginatedConversations"
-    :key="conversation.id"
-    :class="{ active: selectedConversation?.id === conversation.id }"
-    @click="selectConversation(conversation)"
->
-    <!-- Profile Picture -->
-    <div class="avatar-container">
-        <img
-            v-if="conversation.profile_picture"
-            :src="`${conversation.profile_picture}`"
-            alt="Profile Picture"
-            class="conversation-avatar"
-        />
-        <span v-else class="default-avatar">{{ getConversationName(conversation).charAt(0).toUpperCase() }}</span>
+  <div class="chat-app">
+    <!-- Sidebar with conversation list -->
+    <div class="chat-sidebar">
+      <div class="sidebar-header">
+        <h2>Messages</h2>
+        <button @click="showNewChatModal = true" class="new-chat-button">
+          <i class="fas fa-plus"></i> New Chat
+        </button>
+      </div>
+      
+      <div class="search-container">
+        <input 
+          v-model="searchQuery" 
+          type="text" 
+          placeholder="Search conversations..." 
+          class="search-input"
+        >
+      </div>
+      
+      <div class="conversation-list">
+        <div 
+          v-for="conversation in filteredConversations" 
+          :key="conversation.id"
+          @click="selectConversation(conversation)"
+          :class="['conversation-item', { 'active': activeConversation?.id === conversation.id }]"
+        >
+          <div class="conversation-avatar">
+            <img :src="conversation.avatar" :alt="conversation.name" class="avatar">
+            <span v-if="getOnlineStatus(conversation)" class="online-indicator"></span>
+          </div>
+          
+          <div class="conversation-details">
+            <div class="conversation-name">{{ conversation.name }}</div>
+            <div class="conversation-preview">
+              <span v-if="conversation.last_message" class="last-message">
+                <span v-if="conversation.last_message.is_current_user">You: </span>
+                {{ truncate(conversation.last_message.content, 30) }}
+              </span>
+            </div>
+          </div>
+          
+          <div class="conversation-meta">
+            <span v-if="conversation.last_message" class="last-message-time">
+              {{ formatTime(conversation.last_message.created_at) }}
+            </span>
+            <span v-if="conversation.unread_count > 0" class="unread-count">
+              {{ conversation.unread_count }}
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="conversation-data">
-        <strong>{{ getConversationName(conversation) }}</strong>
-
-<!-- Latest Message -->
-<div class="latest-message">
-    <template v-if="conversation.latest_message">
-        <span class="sender-name">{{ conversation.latest_message.sender_name }}:</span>
-        <span class="message-content">{{ conversation.latest_message.content }}</span>
-        <span class="timestamp">{{ formatMessageTimestamp(conversation.latest_message.created_at) }}</span>
-    </template>
-    <template v-else>
-        <span class="placeholder-message">Start a conversation now!</span>
-    </template>
-</div>
+    
+    <!-- Main chat area -->
+    <div class="chat-main">
+      <div v-if="activeConversation" class="chat-container">
+        <!-- Chat header -->
+        <div class="chat-header">
+          <div class="header-left">
+            <button @click="showSidebarOnMobile" class="back-button mobile-only">
+              <i class="fas fa-arrow-left"></i>
+            </button>
+            
+            <div class="user-info">
+              <div class="avatar-container">
+                <img :src="activeConversation.avatar" :alt="activeConversation.name" class="avatar">
+                <span v-if="getOnlineStatus(activeConversation)" class="online-indicator"></span>
+              </div>
+              
+              <div>
+                <h3>{{ activeConversation.name }}</h3>
+                <p v-if="activeConversation.type === 'personal'" class="user-status">
+                  {{ getOnlineStatus(activeConversation) ? 'Online' : 'Offline' }}
+                </p>
+                <p v-else class="user-status">
+                  {{ activeConversation.participants.length }} members
+                </p>
+              </div>
+            </div>
+          </div>
+          
+          <div class="header-right">
+            <button v-if="activeConversation.type === 'group'" @click="showGroupInfo = true" class="header-button">
+              <i class="fas fa-info-circle"></i>
+            </button>
+            <button @click="showOptions = !showOptions" class="header-button">
+              <i class="fas fa-ellipsis-v"></i>
+            </button>
+            
+            <div v-if="showOptions" class="options-dropdown">
+              <button @click="clearConversation" class="dropdown-item">
+                <i class="fas fa-trash"></i> Clear chat
+              </button>
+              <button v-if="activeConversation.type === 'group' && activeConversation.is_admin" 
+                      @click="showGroupSettings = true" 
+                      class="dropdown-item">
+                <i class="fas fa-cog"></i> Group settings
+              </button>
+              <button v-if="activeConversation.type === 'group'" @click="leaveGroup" class="dropdown-item">
+                <i class="fas fa-sign-out-alt"></i> Leave group
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Chat messages -->
+        <div class="chat-messages" ref="messagesContainer">
+          <div v-for="message in messages" :key="message.id" 
+               :class="['message', message.is_current_user ? 'outgoing' : 'incoming']">
+            <div v-if="!message.is_current_user" class="message-avatar">
+              <img :src="message.sender_profile_photo_url" :alt="message.sender_name" class="avatar">
+            </div>
+            
+            <div class="message-content">
+              <div v-if="!message.is_current_user && activeConversation.type === 'group'" class="sender-name">
+                {{ message.sender_name }}
+              </div>
+              
+              <div class="message-bubble">
+                <div v-if="message.content" class="message-text">{{ message.content }}</div>
+                
+                <!-- Attachments -->
+                <div v-if="message.attachments && message.attachments.length" class="message-attachments">
+                  <div v-for="(attachment, index) in message.attachments" :key="index" class="attachment">
+                    <!-- Image preview -->
+                    <template v-if="isImage(attachment.file_path)">
+                      <img :src="attachment.file_path" class="attachment-preview" 
+                           @click="openAttachment(attachment.file_path)">
+                    </template>
+                    
+                    <!-- Video preview -->
+                    <template v-else-if="isVideo(attachment.file_path)">
+                      <video class="attachment-preview" controls>
+                        <source :src="attachment.file_path" type="video/mp4">
+                        Your browser does not support the video tag.
+                      </video>
+                    </template>
+                    
+                    <!-- Document download -->
+                    <template v-else>
+                      <a :href="attachment.file_path" target="_blank" class="document-attachment">
+                        <i :class="getFileIcon(attachment.file_path)"></i>
+                        <span>{{ getFileName(attachment.file_path) }}</span>
+                      </a>
+                    </template>
+                  </div>
+                </div>
+                
+                <div class="message-meta">
+                  <span class="message-time">{{ formatTime(message.created_at) }}</span>
+                  <span v-if="message.is_current_user" class="message-status">
+                    <i v-if="message.status === 'sent'" class="fas fa-check"></i>
+                    <i v-if="message.status === 'delivered'" class="fas fa-check-double"></i>
+                    <i v-if="message.status === 'seen'" class="fas fa-check-double seen"></i>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Chat input -->
+        <div class="chat-input">
+          <div v-if="attachments.length" class="attachments-preview">
+            <div v-for="(file, index) in attachments" :key="index" class="attachment-item">
+              <i :class="getFileIcon(file.name)"></i>
+              <span class="file-name">{{ truncateFileName(file.name) }}</span>
+              <button @click="removeAttachment(index)" class="remove-attachment">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+          </div>
+          
+          <div class="input-container">
+            <button @click="toggleEmojiPicker" class="input-button">
+              <i class="far fa-smile"></i>
+            </button>
+            
+            <button @click="openFilePicker" class="input-button">
+              <i class="fas fa-paperclip"></i>
+              <input type="file" ref="fileInput" multiple @change="handleFileUpload" class="file-input">
+            </button>
+            
+            <input v-model="newMessage" @keyup.enter="sendMessage" 
+                   type="text" placeholder="Type a message..." class="message-input">
+            
+            <button @click="sendMessage" :disabled="!canSend" class="send-button">
+              <i class="fas fa-paper-plane"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Empty state when no conversation is selected -->
+      <div v-else class="empty-state">
+        <div class="empty-content">
+          <i class="fas fa-comments"></i>
+          <h3>Select a conversation to start chatting</h3>
+          <p>Or start a new conversation with someone</p>
+          <button @click="showNewChatModal = true" class="new-chat-button">
+            <i class="fas fa-plus"></i> New Chat
+          </button>
+        </div>
+      </div>
     </div>
     
 
-    <!-- Unread Indicator -->
-    <span v-if="getUnreadCount(conversation)" class="unread-indicator">
-        {{ getUnreadCount(conversation) }}
-    </span>
-</li>
-</ul>
-<button @click="loadMoreConversations" v-if="hasMoreConversations">Load More</button>
+    <!-- Correct your modal components -->
+<NewChatModal 
+  v-if="showNewChatModal" 
+  @close="showNewChatModal = false"
+  @start-chat="startNewChat"
+/>
 
-      <!-- Create Group Chat Button -->
-      <button @click="showCreateGroupModal = true" class="create-group-btn">
-        Create Group Chat
-      </button>
+<GroupInfoModal 
+  v-if="showGroupInfo && activeConversation" 
+  :conversation="activeConversation"
+  @close="showGroupInfo = false"
+  @add-members="showAddMembersModal = true"
+/>
 
-      <!-- Create Group Modal -->
-      <div v-if="showCreateGroupModal" class="modal-overlay">
-    <div class="modal">
-        <h3>Create Group Chat</h3>
-        <form @submit.prevent="createGroupChat">
-            <label for="group-name">Group Name:</label>
-            <input type="text" id="group-name" v-model="newGroupName" required />
-
-            <!-- Profile Picture -->
-            <label for="profile-picture">Profile Picture:</label>
-            <input type="file" id="profile-picture" @change="handleProfilePictureUpload" accept="image/*" />
-
-            <label>Participants:</label>
-            <div class="user-list">
-                <div v-for="user in availableUsers" :key="user.id" class="user-item">
-                    <span>{{ user.name }}</span>
-                    <button
-                        v-if="!isSelected(user.id)"
-                        @click="addParticipant(user)"
-                        class="add-participant-btn"
-                    >
-                        <i class="fas fa-plus"></i>
-                    </button>
-                </div>
-            </div>
-
-            <div class="selected-participants">
-                <h4>Selected Participants:</h4>
-                <div v-if="selectedParticipants.length > 0">
-                    <span
-                        v-for="participant in selectedParticipants"
-                        :key="participant.id"
-                        class="participant-tag"
-                    >
-                        {{ participant.name }}
-                        <button @click="removeParticipant(participant.id)">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </span>
-                </div>
-                <p v-else>No participants selected.</p>
-            </div>
-
-            <div class="modal-actions">
-                <button type="button" @click="showCreateGroupModal = false">Cancel</button>
-                <button type="submit">Create</button>
-            </div>
-        </form>
-    </div>
-</div>
-    </div>
-
-    <div class="message-view" v-if="selectedConversation">
-    <!-- Profile Picture -->
-    <div class="conversation-header">
-        <div class="avatar-container">
-            <img
-                v-if="selectedConversation.profile_photo_path"
-                :src="`/storage/${selectedConversation.profile_photo_path}`"
-                alt="Profile Picture"
-                class="conversation-avatar"
-            />
-            <span v-else class="default-avatar">{{ getConversationName(selectedConversation).charAt(0).toUpperCase() }}</span>
-        </div>
-
-        <!-- Conversation Name -->
-        <h3>{{ getConversationName(selectedConversation) }}</h3>
-    </div>
-
-    <!-- Messages -->
-    <div class="messages" ref="messagesContainer" @scroll="handleScroll">
-        <div
-            v-for="message in messages"
-            :key="message.id"
-            :class="['message', { 'message-right': isCurrentUser(message.sender_id) }]"
-        >
-            <!-- Sender Avatar (only for non-current users) -->
-            <div v-if="!isCurrentUser(message.sender_id)" class="sender-avatar">
-                <img
-                    v-if="message.sender_profile_picture"
-                    :src="message.sender_profile_picture"
-                    alt="Sender Profile Picture"
-                    class="sender-avatar-image"
-                />
-                <span v-else class="default-avatar">{{ message.sender_name.charAt(0).toUpperCase() }}</span>
-            </div>
-<div>
-      <!-- Sender Name -->
-      <strong v-if="!isCurrentUser(message.sender_id)">
-                {{ message.sender_name }}
-            </strong>
-
-            <!-- Message Content -->
-            <p>{{ message.content }}</p>
-
-            <!-- Render Attachments -->
-            <div v-if="message.attachments && message.attachments.length > 0">
-                <div v-for="(attachment, index) in message.attachments" :key="index" class="post-container">
-                    <!-- Render Image -->
-                    <img
-                        v-if="isImage(attachment.file_type)"
-                        class="post-image"
-                        :src="`/storage/${attachment.file_path}`"
-                        alt="Attachment"
-                    />
-
-                    <!-- Render Video -->
-                    <video
-                        v-else-if="isVideo(attachment.file_type)"
-                        controls
-                        style="max-width: 300px;"
-                    >
-                        <source :src="`/storage/${attachment.file_path}`" :type="attachment.file_type" />
-                        Your browser does not support the video tag.
-                    </video>
-
-                    <!-- Render Other File Types -->
-                    <div v-else>
-                        <a :href="`/storage/${attachment.file_path}`" target="_blank">Download File</a>
-                    </div>
-                </div>
-            </div>
-            <!-- Reply Button -->
-            <button v-if="message.reply_to_message_id" @click="scrollToMessage(message.reply_to_message_id)">
-                Reply to: {{ getMessage(message.reply_to_message_id)?.content }}
-            </button>
-
-            <div class="time-status">
- <!-- Timestamp -->
- <span class="message-timestamp">
-                {{ formatMessageTimestamp(message.created_at) }}
-            </span>
-
-
-
-            <!-- Message Status -->
-            <span v-if="isCurrentUser(message.sender_id)" class="message-status">
-                <i
-                    v-if="message.status === 'sent'"
-                    class="fas fa-check"
-                    title="Sent"
-                ></i>
-                <i
-                    v-else-if="message.status === 'delivered'"
-                    class="fas fa-check-double text-secondary"
-                    title="Delivered"
-                ></i>
-                <i
-                    v-else-if="message.status === 'seen'"
-                    class="fas fa-check-double text-primary"
-                    title="Seen"
-                ></i>
-            </span>
-            </div>
-           
-</div>
-          
-        </div>
-        <div v-if="loadingMessages" class="loading-indicator">Loading more messages...</div>
-    </div>
-
-    <!-- Message Input -->
-    <div class="message-input">
-        <textarea
-            v-model="newMessage"
-            placeholder="Type a message..."
-            @keydown.enter.prevent="sendMessage"
-        ></textarea>
-        <input class="upload-input" type="file" @change="handleFileUpload" accept="image/*, video/*" multiple />
-        <button @click="sendMessage">Send</button>
-    </div>
-</div>
-<div v-if="selectedConversation?.type === 'group'" class="group-details">
-    <h4>Group Details</h4>
-    <p><strong>Creator:</strong> {{ selectedConversation.creator.name }}</p>
-    <h5>Participants:</h5>
-    <ul>
-        <li v-for="participant in selectedConversation.participants" :key="participant.id">
-            {{ participant.user.name }}
-            <button
-                v-if="canRemoveParticipant(participant.user.id)"
-                @click="removeParticipantFromGroup(participant.user.id)"
-                class="remove-participant-btn"
-            >
-                <i class="fas fa-times"></i>
-            </button>
-        </li>
-    </ul>
-    <button @click="showAddParticipantModal = true">Add Participant</button>
-</div>
-
-<!-- Modal for Adding Participants -->
-<div v-if="showAddParticipantModal" class="modal-overlay">
-    <div class="modal">
-        <h3>Add Participant</h3>
-        <div class="user-list">
-            <div v-for="user in availableUsers" :key="user.id" class="user-item">
-                <span>{{ user.name }}</span>
-                <button
-                    v-if="!isAlreadyParticipant(user.id)"
-                    @click="addParticipantToGroup(user)"
-                    class="add-participant-btn"
-                >
-                    <i class="fas fa-plus"></i>
-                </button>
-            </div>
-        </div>
-        <div class="modal-actions">
-            <button type="button" @click="showAddParticipantModal = false">Cancel</button>
-        </div>
-    </div>
-</div>
+<!-- Make sure all modal components are properly imported -->
+    <!-- Modals -->
+    <EmojiPicker 
+      v-if="showEmojiPicker" 
+      @emoji-selected="addEmoji"
+      @close="showEmojiPicker = false"
+    />
+    
+    <!-- Group Settings Modal -->
+    <GroupSettingsModal 
+      v-if="showGroupSettings" 
+      :conversation="conversation"
+      @close="showGroupSettings = false"
+      @update="handleGroupUpdate"
+    />
+    
+    <!-- Add Members Modal -->
+    <AddMembersModal 
+      v-if="showAddMembersModal" 
+      :current-members="conversation.participants.map(p => p.id)"
+      @close="showAddMembersModal = false"
+      @add-members="addGroupMembers"
+    />
+    
+    <!-- Attachment Viewer -->
+    <AttachmentViewer 
+      v-if="selectedAttachment" 
+      :src="selectedAttachment"
+      @close="selectedAttachment = null"
+    />
   </div>
 </template>
-  
+
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch, nextTick, onBeforeUnmount } from 'vue';
+import { router } from '@inertiajs/vue3';
 import axios from 'axios';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import localizedFormat from 'dayjs/plugin/localizedFormat';
+import NewChatModal from '@/Components/Chat/NewChatModal.vue';
+import GroupInfoModal from '@/Components/Chat/GroupInfoModal.vue';
+import GroupSettingsModal from '@/Components/Chat/GroupSettingsModal.vue';
+import AddMembersModal from '@/Components/Chat/AddMembersModal.vue';
+import AttachmentViewer from '@/Components/Chat/AttachmentViewer.vue';
+import EmojiPicker from '@/Components/Chat/EmojiPicker.vue';
 
 // Extend dayjs with plugins
 dayjs.extend(relativeTime);
 dayjs.extend(localizedFormat);
-// Reactive State
-const selectedConversation = ref(null);
-const newMessage = ref('');
-const files = ref([]);
-const hasMoreConversations = ref(true);
-const loadingMessages = ref(false);
-const showCreateGroupModal = ref(false);
-const newGroupName = ref('');
-const selectedParticipants = ref([]); // Array of selected participants
-const availableUsers = ref([]);
-const conversations = ref([]);
-const currentPage = ref(1);
-const perPage = 10;
-const user = ref(null);
+
+const props = defineProps({
+  conversations: Array,
+  current_user: Object,
+});
+
+// Refs
+const activeConversation = ref(null);
 const messages = ref([]);
-const messagePagination = ref({});
-const users = ref([]);
-const showAddParticipantModal = ref(false);
-const profilePicture = ref(null);
+const newMessage = ref('');
+const attachments = ref([]);
+const fileInput = ref(null);
+const messagesContainer = ref(null);
+const searchQuery = ref('');
 const lastMessageId = ref(null);
 const pollingInterval = ref(null);
-const isPollingActive = ref(false);
+const typingPollingInterval = ref(null);
+const typingUsers = ref([]);
+const typingTimeout = ref(null);
+const showNewChatModal = ref(false);
+const showGroupInfo = ref(false);
+const showGroupSettings = ref(false);
+const showAddMembersModal = ref(false);
+const selectedAttachment = ref(null);
+const showOptions = ref(false);
+const showEmojiPicker = ref(false);
 
-
-const paginatedConversations = computed(() => {
-    const start = (currentPage.value - 1) * perPage;
-    const end = start + perPage;
-    return conversations.value.slice(start, end);
+// Computed properties
+const filteredConversations = computed(() => {
+  if (!searchQuery.value) return props.conversations;
+  
+  const query = searchQuery.value.toLowerCase();
+  return props.conversations.filter(conv => {
+    return conv.name.toLowerCase().includes(query) || 
+           (conv.last_message?.content?.toLowerCase().includes(query) ?? false);
+  });
 });
 
-const loadMoreConversations = () => {
-    currentPage.value += 1;
-    fetchConversations();
-};
+const canSend = computed(() => {
+  return newMessage.value.trim().length > 0 || attachments.value.length > 0;
+});
 
-const getConversationName = (conversation) => {
-    if (conversation.type === 'global') {
-        return 'Global Chat';
-    } else if (conversation.type === 'batch') {
-        return `Batch ${conversation.year_graduated}`;
-    } else if (conversation.type === 'campus') {
-        return `${conversation.campus} Campus`;
-    } else if (conversation.type === 'personal') {
-        const otherParticipant = conversation.participants.find(
-            (p) => p.user_id !== user.value.id
-        );
-        return otherParticipant ? otherParticipant.name : 'Private Chat';
-    } else if (conversation.type === 'group') {
-        return conversation.name || 'Group Chat';
+// Methods
+function selectConversation(conversation) {
+  // Reset messages and state when switching conversations
+  messages.value = [];
+  lastMessageId.value = null;
+  typingUsers.value = [];
+  
+  // Use the router to navigate to the new chat URL
+  router.visit(route('chat.show', { conversation: conversation.id }), {
+    preserveState: true,
+    preserveScroll: true,
+    onSuccess: () => {
+      activeConversation.value = conversation;
+      fetchMessages();
+      
+      // Mark as seen
+      if (conversation.unread_count > 0) {
+        markAsSeen();
+      }
     }
-    return 'Unknown Chat';
-};
-// Fetch Available Users for Group Creation
-const fetchAvailableUsers = async () => {
+  });
+}
+async function fetchMessages() {
+  if (!activeConversation.value) return;
+  
   try {
-    const response = await axios.get('/api/users'); // Assuming you have an API endpoint for fetching users
-    availableUsers.value = response.data.map((user) => ({ ...user, isSelected: false }));
-  } catch (error) {
-    console.error('Error fetching users:', error);
-  }
-};
-const fetchConversations = async () => {
-    try {
-        const response = await axios.get('/api/chat', {
-            params: { page: currentPage.value },
-        });
-
-        // Create a map of existing conversations for quick lookup
-        const existingConversationsMap = new Map(
-            conversations.value.map(conv => [conv.id, conv])
-        );
-
-        // Merge new conversations, updating existing ones
-        response.data.data.forEach(newConv => {
-            existingConversationsMap.set(newConv.id, {
-                ...existingConversationsMap.get(newConv.id),
-                ...newConv
-            });
-        });
-
-        // Convert back to array
-        conversations.value = Array.from(existingConversationsMap.values())
-            .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-
-        // Update pagination metadata
-        hasMoreConversations.value = response.data.pagination.has_more;
-    } catch (error) {
-        console.error('Error fetching conversations:', error.response?.data || error.message);
-    }
-};
-const fetchUserData = async () => {
-    try {
-        const response = await axios.get('/api/user'); // Adjust the endpoint if needed
-        user.value = response.data;
-    } catch (error) {
-        console.error('Error fetching user data:', error);
-        user.value = {}; // Fallback to an empty object
-    }
-};
-
-// Add Participant
-const addParticipant = (user) => {
-  selectedParticipants.value.push(user);
-  user.isSelected = true; // Mark the user as selected
-};
-
-// Remove Participant
-const removeParticipant = (userId) => {
-  selectedParticipants.value = selectedParticipants.value.filter(
-    (participant) => participant.id !== userId
-  );
-  const user = availableUsers.value.find((u) => u.id === userId);
-  if (user) user.isSelected = false; // Unmark the user as selected
-};
-
-// Check if a User is Already Selected
-const isSelected = (userId) => {
-  return selectedParticipants.value.some((participant) => participant.id === userId);
-};
-const getUnreadCount = (conversation) => {
-    if (!conversation.messages) return 0;
-    return conversation.messages.filter((msg) => !msg.is_read).length;
-};
-// Create Group Chat
-const createGroupChat = async () => {
-    try {
-        const formData = new FormData();
-        formData.append('name', newGroupName.value);
-        formData.append('participants', JSON.stringify(selectedParticipants.value.map(p => p.id)));
-
-        if (profilePicture.value) {
-            formData.append('profile_picture', profilePicture.value);
-        }
-
-        const response = await axios.post('/api/chat/group', formData, {
-            headers: {
-                'Content-Type': 'multipart/form-data',
-            },
-        });
-
-        // Add the new group chat to the beginning of the conversation list
-        conversations.value = [response.data, ...conversations.value];
-
-        // Reset form and close modal
-        showCreateGroupModal.value = false;
-        newGroupName.value = '';
-        selectedParticipants.value = [];
-        profilePicture.value = null;
-        
-        // Select the new conversation
-        await selectConversation(response.data);
-    } catch (error) {
-        console.error('Error creating group chat:', error.response?.data || error.message);
-    }
-};
-// const selectConversation = async (conversation) => {
-//     selectedConversation.value = conversation;
-
-//     // Reset pagination for messages
-//     messagePagination.value = {};
-//     await fetchMessages(conversation.id);
-// };
-// Handle Infinite Scroll for Messages
-// const handleScroll = () => {
-//     const container = document.querySelector('.messages');
-//     if (!container) return;
-
-//     const { scrollTop, scrollHeight, clientHeight } = container;
-//     if (scrollTop + clientHeight >= scrollHeight - 50 && messagePagination.value.has_more) {
-//         messagePagination.value.current_page += 1;
-//         fetchMessages(selectedConversation.value.id, true);
-//     }
-// };
-
-// Fetch Messages for a Conversation
-// const fetchMessages = async (conversationId, append = false) => {
-//     try {
-//         const response = await axios.get(`/api/conversations/${conversationId}/messages`, {
-//             params: { page: messagePagination.value.current_page || 1 },
-//         });
-
-//         if (append) {
-//             messages.value = [...response.data.data, ...messages.value]; // Prepend new messages
-//         } else {
-//             messages.value = response.data.data;
-//         }
-
-//         // Update pagination metadata
-//         messagePagination.value = response.data.pagination;
-//     } catch (error) {
-//         console.error('Error fetching messages:', error.response?.data || error.message);
-//     }
-// };
-const fetchMessages = async (conversationId, append = false) => {
-    try {
-        const response = await axios.get(`/api/conversations/${conversationId}/messages`, {
-            params: { 
-                page: append ? messagePagination.value.current_page + 1 : 1 
-            }
-        });
-        
-        if (append) {
-            // For pagination, prepend older messages
-            messages.value = [...response.data.data, ...messages.value];
-        } else {
-            // For initial load, replace all messages
-            messages.value = response.data.data;
-        }
-        
-        lastMessageId.value = messages.value.length > 0 
-            ? messages.value[messages.value.length - 1].id 
-            : null;
-            
-        messagePagination.value = response.data.pagination;
-        
-        // Scroll to appropriate position
-        if (append) {
-            // Maintain scroll position when loading older messages
-            const container = document.querySelector('.messages');
-            if (container) {
-                const scrollHeightBefore = container.scrollHeight;
-                setTimeout(() => {
-                    container.scrollTop = container.scrollHeight - scrollHeightBefore;
-                }, 0);
-            }
-        } else {
-            // Scroll to bottom for new conversation
-            scrollToBottom();
-        }
-    } catch (error) {
-        console.error('Error fetching messages:', error);
-    }
-};
-
-const handleFileUpload = (event) => {
-    files.value = Array.from(event.target.files);
-};
-const sendMessage = async () => {
-    if (!newMessage.value.trim() && files.value.length === 0) return;
-
-    const formData = new FormData();
-    formData.append('conversation_id', selectedConversation.value.id);
-    formData.append('content', newMessage.value);
-
-    // Append files to the form data
-    files.value.forEach((file) => {
-        formData.append('attachments[]', file);
-    });
-
-    try {
-        const response = await axios.post('/api/messages', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-        });
-
-        // Add the new message to the messages array
-        messages.value.push(response.data);
-
-        // Clear input fields
-        newMessage.value = '';
-        files.value = [];
-        document.querySelector('input[type="file"]').value = ''; // Reset file input
-
-        // Scroll to the bottom of the messages container
-        scrollToBottom();
-    } catch (error) {
-        console.error('Error sending message:', error.response?.data || error.message);
-    }
-};
-
-// Scroll to Bottom of Messages
-const scrollToBottom = () => {
-    const messagesContainer = document.querySelector('.messages');
-    if (messagesContainer) {
-        messagesContainer.scrollTop = 0; // Scroll to top in reverse mode
-    }
-};
-
-// Call this function whenever new messages are added
-watch(messages, () => {
-    scrollToBottom();
-}, { deep: true });
-const getUser = (userId) => {
-    return users.value.find((user) => user.id === userId) || { name: 'Unknown User' };
-};
-
-// Fetch All Users
-const fetchUsers = async () => {
-    try {
-        const response = await axios.get('/api/users'); // Adjust the endpoint if needed
-        users.value = response.data;
-    } catch (error) {
-        console.error('Error fetching users:', error);
-    }
-};
-// Check if a user is already a participant
-const isAlreadyParticipant = (userId) => {
-    return selectedConversation.value.participants.some(
-        (participant) => participant.user.id === userId
-    );
-};
-// Helper Function to Format Message Timestamp
-const formatMessageTimestamp = (timestamp) => {
-    const now = dayjs();
-    const messageTime = dayjs(timestamp);
-
-    // If the message is older than 7 days, show the full date
-    if (now.diff(messageTime, 'days') > 7) {
-        return messageTime.format('lll'); // e.g., "Oct 1, 2023 12:34 PM"
-    }
-
-    // Otherwise, show relative time (e.g., "5 minutes ago")
-    return messageTime.fromNow();
-};
-// Add Participant to Group
-const addParticipantToGroup = async (user) => {
-    try {
-        await axios.post(`/api/conversations/${selectedConversation.value.id}/add-participant`, {
-            user_id: user.id,
-        });
-
-        // Update the participants list
-        selectedConversation.value.participants.push({ user });
-
-        // Close the modal
-        showAddParticipantModal.value = false;
-    } catch (error) {
-        console.error('Error adding participant:', error.response?.data || error.message);
-    }
-};
-
-// Remove Participant from Group
-const removeParticipantFromGroup = async (userId) => {
-    try {
-        await axios.post(`/api/conversations/${selectedConversation.value.id}/remove-participant`, {
-            user_id: userId,
-        });
-
-        // Update the participants list
-        selectedConversation.value.participants = selectedConversation.value.participants.filter(
-            (participant) => participant.user.id !== userId
-        );
-    } catch (error) {
-        console.error('Error removing participant:', error.response?.data || error.message);
-    }
-};
-
-const canRemoveParticipant = (userId) => {
-    return (
-        userId === user.value.id || // Allow self-removal
-        selectedConversation.value.created_by === user.value.id // Allow creator to remove others
-    );
-};
-const selectConversation = async (conversation) => {
-    stopPolling();
-
-    // Find the most up-to-date version of this conversation
-    const updatedConversation = conversations.value.find(c => c.id === conversation.id) || conversation;
+    const endpoint = activeConversation.value.type === 'personal' 
+      ? route('chat.messages', { user: getOtherParticipant().id })
+      : route('chat.conversation-messages', { conversation: activeConversation.value.id });
     
-    selectedConversation.value = updatedConversation;
-    localStorage.setItem('selectedConversationId', updatedConversation.id);
-
-    // Reset messages for this conversation
+    // Reset messages when fetching for a new conversation
     messages.value = [];
-    await fetchMessages(updatedConversation.id);
-
-    // Mark messages as delivered if needed
-    const undeliveredMessageIds = messages.value
-        .filter(msg => msg.status === 'sent' && msg.sender_id !== user.value.id)
-        .map(msg => msg.id);
-
-    if (undeliveredMessageIds.length > 0) {
-        await markMessagesAsDelivered(updatedConversation.id, undeliveredMessageIds);
-    }
-
-    // Fetch group details if needed
-    if (updatedConversation.type === 'group') {
-        try {
-            const response = await axios.get(`/api/conversations/${updatedConversation.id}`);
-            // Update both the selected conversation and the one in the list
-            selectedConversation.value = response.data;
-            updateConversationInList(response.data);
-        } catch (error) {
-            console.error('Error fetching group details:', error);
-        }
-    }
+    lastMessageId.value = null;
     
-    startPolling();
-};
-
-const updateConversationInList = (updatedConversation) => {
-    const index = conversations.value.findIndex(c => c.id === updatedConversation.id);
-    if (index !== -1) {
-        conversations.value[index] = updatedConversation;
-    }
-};
-const stopPolling = () => {
-    clearInterval(pollingInterval.value);
-    isPollingActive.value = false;
-};
-
-const fetchNewMessages = async () => {
-    if (!selectedConversation.value) return;
+    const response = await axios.get(endpoint);
+    const newMessages = response.data.messages || [];
     
-    try {
-        const response = await axios.get('/api/chat/new-messages', {
-            params: {
-                conversation_id: selectedConversation.value.id,
-                last_message_id: lastMessageId.value
-            }
-        });
+    if (newMessages.length) {
+      messages.value = newMessages; // Replace all messages
+      lastMessageId.value = newMessages[newMessages.length - 1].id;
+      scrollToBottom();
+    }
+  } catch (error) {
+    console.error('Error fetching messages:', error);
+  }
+}
+function toggleEmojiPicker() {
+  showEmojiPicker.value = !showEmojiPicker.value;
+}
+
+function addEmoji(emoji) {
+  newMessage.value += emoji;
+  showEmojiPicker.value = false;
+}
+async function checkForNewMessages() {
+  if (!activeConversation.value || messages.value.length === 0) return;
+  
+  try {
+    const endpoint = activeConversation.value.type === 'personal' 
+      ? route('chat.messages', { user: getOtherParticipant().id })
+      : route('chat.conversation-messages', { conversation: activeConversation.value.id });
+    
+    const params = { last_id: lastMessageId.value };
+    const response = await axios.get(endpoint, { params });
+    
+    const newMessages = response.data.messages || [];
+    if (newMessages.length) {
+      // Filter out any duplicates (shouldn't be necessary but just in case)
+      const existingIds = new Set(messages.value.map(m => m.id));
+      const filteredMessages = newMessages.filter(msg => !existingIds.has(msg.id));
+      
+      if (filteredMessages.length > 0) {
+        messages.value.push(...filteredMessages);
+        lastMessageId.value = filteredMessages[filteredMessages.length - 1].id;
+        scrollToBottom();
         
-        if (response.data.messages.length > 0) {
-            // Add new messages to the beginning of the array (for reverse chronological order)
-            messages.value = [...response.data.messages.reverse(), ...messages.value];
-            lastMessageId.value = response.data.last_message_id;
-            
-            // Optional: Play sound for new messages
-            if (messages.value.some(msg => msg.sender_id !== user.value.id)) {
-                playNotificationSound();
-            }
+        // Mark as seen if any new messages are from others
+        if (filteredMessages.some(msg => !msg.is_current_user)) {
+          await markAsSeen();
         }
-    } catch (error) {
-        console.error('Error fetching new messages:', error);
+      }
     }
-};
+  } catch (error) {
+    console.error('Error checking for new messages:', error);
+  }
+}
+function formatMessageDate(date) {
+    return dayjs(date).format('LLLL');
+}
 
-const markMessagesAsDelivered = async (conversationId, messageIds) => {
-    try {
-        await axios.post(`/api/conversations/${conversationId}/mark-delivered`, {
-            message_ids: messageIds,
-        });
+function formatMessageTime(date) {
+    return dayjs(date).format('LT');
+}
 
-        // Update the status locally
-        messages.value = messages.value.map((msg) =>
-            messageIds.includes(msg.id) ? { ...msg, status: 'delivered' } : msg
-        );
-    } catch (error) {
-        console.error('Error marking messages as delivered:', error.response?.data || error.message);
-    }
-};
-const markMessagesAsSeen = async (conversationId, messageIds) => {
-    try {
-        await axios.post(`/api/conversations/${conversationId}/mark-seen`, {
-            message_ids: messageIds,
-        });
+function isImage(filePath) {
+    return /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(filePath);
+}
 
-        // Update the status locally
-        messages.value = messages.value.map((msg) =>
-            messageIds.includes(msg.id) ? { ...msg, status: 'seen' } : msg
-        );
-    } catch (error) {
-        console.error('Error marking messages as seen:', error);
-    }
-};
-// Helper function to check if a file is an image
-const isImage = (fileType) => {
-    return fileType && fileType.startsWith('image/');
-};
-
-// Helper function to check if a file is a video
-const isVideo = (fileType) => {
-    return fileType && fileType.startsWith('video/');
-};
-const handleScroll = async () => {
-    const container = document.querySelector('.messages');
-    if (!container) return;
-
-    const { scrollTop, scrollHeight, clientHeight } = container;
-
-    // Check if the user has scrolled to the top of the container
-    if (scrollTop === 0 && messagePagination.value.has_more) {
-        try {
-            loadingMessages.value = true;
-
-            // Increment the page number
-            messagePagination.value.current_page += 1;
-
-            // Fetch older messages
-            const response = await axios.get(`/api/conversations/${selectedConversation.value.id}/messages`, {
-                params: { page: messagePagination.value.current_page },
-            });
-
-            // Prepend older messages to the top of the list
-            messages.value = [...response.data.data, ...messages.value];
-
-            // Update pagination metadata
-            messagePagination.value = response.data.pagination;
-        } catch (error) {
-            console.error('Error fetching older messages:', error.response?.data || error.message);
-        } finally {
-            loadingMessages.value = false;
-        }
-    }
-};
-const logout = async () => {
-    try {
-        // Send a request to the backend to log out
-        await axios.post('/logout'); // Adjust the endpoint if needed (e.g., /api/logout)
-
-        // Clear local storage
-        localStorage.removeItem('selectedConversationId');
-        localStorage.removeItem('auth_token'); // Remove the authentication token if stored
-
-        // Reset reactive states
-        selectedConversation.value = null;
-        conversations.value = [];
-        messages.value = [];
-        user.value = null;
-
-        // Redirect to login page
-        window.location.href = '/login'; // Replace with your login route
-    } catch (error) {
-        console.error('Error during logout:', error.response?.data || error.message);
-        alert('An error occurred while logging out. Please try again.');
-    }
-};
-
-
-// Update startPolling to use longPoll instead
-const startPolling = () => {
-    if (!selectedConversation.value || isPollingActive.value) return;
-    isPollingActive.value = true;
-    longPoll();
-};
-
-const longPoll = async () => {
-    if (!selectedConversation.value) {
-        isPollingActive.value = false;
-        return;
-    }
+function isVideo(filePath) {
+    return /\.(mp4|webm|ogg)$/i.test(filePath);
+}
+async function markAsSeen() {
+  if (!activeConversation.value) return;
+  
+  try {
+    const endpoint = activeConversation.value.type === 'personal' 
+      ? route('chat.markAsSeen', { user: getOtherParticipant().id })
+      : route('chat.conversation.markAsSeen', { conversation: activeConversation.value.id });
     
-    try {
-        const response = await axios.get('/api/chat/long-poll', {
-            params: {
-                conversation_id: selectedConversation.value.id,
-                last_message_id: lastMessageId.value,
-                timeout: 25000
-            },
-            timeout: 30000
-        });
-        
-        if (response.data.messages.length > 0) {
-            // Filter out any duplicates that might already exist
-            const newMessages = response.data.messages.filter(newMsg => 
-                !messages.value.some(existingMsg => existingMsg.id === newMsg.id)
-            );
-            
-            if (newMessages.length > 0) {
-                messages.value = [...messages.value, ...newMessages];
-                lastMessageId.value = response.data.last_message_id;
-                
-                // Play sound only for messages from others
-                if (newMessages.some(msg => msg.sender_id !== user.value.id)) {
-                    playNotificationSound();
-                }
-                
-                // Update the conversation's latest message in the list
-                const latestMessage = newMessages[newMessages.length - 1];
-                updateConversationLatestMessage(selectedConversation.value.id, latestMessage);
-            }
-        }
-        
-        // Immediately start next long poll if still active
-        if (isPollingActive.value) {
-            longPoll();
-        }
-    } catch (error) {
-        console.error('Long poll error:', error);
-        // Retry after a delay if still active
-        if (isPollingActive.value) {
-            setTimeout(longPoll, 3000);
-        }
-    }
-};
+    await axios.post(endpoint);
+  } catch (error) {
+    console.error('Error marking messages as seen:', error);
+  }
+}
 
-const updateConversationLatestMessage = (conversationId, message) => {
-    const index = conversations.value.findIndex(c => c.id === conversationId);
-    if (index !== -1) {
-        conversations.value[index].latest_message = {
-            content: message.content,
-            sender_name: message.sender_name,
-            created_at: message.created_at
-        };
-        // Also update the selected conversation if it's the same one
-        if (selectedConversation.value?.id === conversationId) {
-            selectedConversation.value.latest_message = conversations.value[index].latest_message;
-        }
-    }
-};
-// Helper Function to Check if a Message Belongs to the Current User
-const isCurrentUser = (senderId) => {
-    return senderId === user.value?.id;
-};
-
-const handleProfilePictureUpload = (event) => {
-    const file = event.target.files[0];
-    if (file) {
-        profilePicture.value = file; // Store the file in the state
-    }
-};
-onMounted(async () => {
-    await   fetchUserData();
-    await fetchAvailableUsers();
-    await fetchUsers();
-    await fetchConversations();
-
-    const savedConversationId = localStorage.getItem('selectedConversationId');
-    if (savedConversationId) {
-        const conversation = conversations.value.find(c => c.id == savedConversationId);
-        if (conversation) {
-            selectConversation(conversation);
-        }
-    }
+function getFileIcon(filePath) {
+    const fileName = typeof filePath === 'string' ? filePath : filePath.name;
+    const extension = fileName.split('.').pop().toLowerCase();
     
-    // Start polling for conversation updates
-    const conversationPolling = setInterval(() => {
-        fetchConversations();
-    }, 10000); // Check for new conversations every 10 seconds
-    
-    // Cleanup on unmount
-    onBeforeUnmount(() => {
-        stopPolling();
-        clearInterval(conversationPolling);
+    switch(extension) {
+        case 'pdf':
+            return 'fas fa-file-pdf pdf-icon';
+        case 'doc':
+        case 'docx':
+            return 'fas fa-file-word word-icon';
+        case 'xls':
+        case 'xlsx':
+            return 'fas fa-file-excel excel-icon';
+        case 'ppt':
+        case 'pptx':
+            return 'fas fa-file-powerpoint ppt-icon';
+        case 'zip':
+        case 'rar':
+        case '7z':
+            return 'fas fa-file-archive archive-icon';
+        case 'txt':
+            return 'fas fa-file-alt text-icon';
+        default:
+            return 'fas fa-file file-icon';
+    }
+}
+async function sendMessage() {
+  if (!canSend.value || !activeConversation.value) return;
+
+  const formData = new FormData();
+  if (newMessage.value.trim()) {
+    formData.append('message', newMessage.value.trim());
+  }
+
+  // Add attachments if any
+  attachments.value.forEach((file, index) => {
+    formData.append(`attachments[${index}]`, file);
+  });
+
+  try {
+    const endpoint = activeConversation.value.type === 'personal'
+      ? route('chat.send', { user: getOtherParticipant().id })
+      : route('chat.conversation.send', { conversation: activeConversation.value.id });
+
+    const response = await axios.post(endpoint, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
     });
+
+    // Process the response
+    const processedAttachments = response.data.attachments?.map(attachment => ({
+      id: attachment.id,
+      file_path: attachment.file_path,
+      file_type: attachment.file_type
+    })) || [];
+
+    // Add the new message to the messages array
+    const newMsg = {
+      id: response.data.id,
+      sender_id: props.current_user.id,
+      is_current_user: true,
+      content: response.data.content,
+      created_at: response.data.created_at,
+      status: response.data.status || 'sent',
+      attachments: processedAttachments,
+      sender_name: props.current_user.name,
+      sender_profile_photo_url: props.current_user.avatar
+    };
+
+    messages.value.push(newMsg);
+    lastMessageId.value = newMsg.id; // Update the last message ID
+
+    // Reset input fields
+    newMessage.value = '';
+    attachments.value = [];
+    if (fileInput.value) {
+      fileInput.value.value = ''; // Reset file input
+    }
+
+    // Close emoji picker if open
+    showEmojiPicker.value = false;
+
+    // Scroll to bottom to show the new message
+    scrollToBottom();
+
+    // Update the last message in the conversation list
+    const conversation = props.conversations.find(c => c.id === activeConversation.value.id);
+    if (conversation) {
+      conversation.last_message = {
+        content: newMsg.content,
+        created_at: newMsg.created_at,
+        is_current_user: true
+      };
+    }
+
+  } catch (error) {
+    console.error('Error sending message:', error);
+    // You might want to add user feedback here, like a toast notification
+  }
+}
+async function startNewChat(user) {
+  showNewChatModal.value = false;
+  
+  try {
+    // Start a new chat with the selected user
+    const response = await axios.post(route('chat.start', { user: user.id }));
+    
+    // Find or create the conversation in the local list
+    let conversation = props.conversations.find(c => 
+      c.type === 'personal' && 
+      c.participants.some(p => p.id === user.id)
+    );
+    
+    if (!conversation) {
+      conversation = {
+        id: response.data.conversation_id,
+        type: 'personal',
+        name: user.name,
+        avatar: user.avatar,
+        participants: [
+          { id: props.current_user.id, name: props.current_user.name },
+          { id: user.id, name: user.name }
+        ],
+        last_message: null,
+        unread_count: 0,
+        created_at: new Date().toISOString()
+      };
+      
+      // Add the new conversation to the beginning of the list
+      props.conversations.unshift(conversation);
+    }
+    
+    // Select the new conversation
+    selectConversation(conversation);
+    
+  } catch (error) {
+    console.error('Error starting new chat:', error);
+    // You might want to show an error message to the user
+  }
+}
+function getFileName(filePath) {
+    return filePath.split('/').pop();
+}
+
+function truncateFileName(fileName, maxLength = 20) {
+    if (fileName.length <= maxLength) return fileName;
+    return fileName.substring(0, maxLength) + '...';
+}
+
+// Function to scroll to bottom
+function scrollToBottom() {
+  nextTick(() => {
+    if (messagesContainer.value) {
+      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
+    }
+  });
+}
+// async function checkTypingStatus() {
+//   if (!activeConversation.value?.id) {
+//     console.warn('No active conversation ID available for typing status check');
+//     return;
+//   }
+
+//   try {
+//     const response = await axios.get(route('chat.typing-status', { 
+//       conversation: activeConversation.value.id  // Make sure this matches your route parameter name
+//     }));
+    
+//     // Update typing users list
+//     typingUsers.value = response.data.typing_users || [];
+    
+//     // Clear any users who stopped typing
+//     if (typingTimeout.value) {
+//       clearTimeout(typingTimeout.value);
+//     }
+    
+//     typingTimeout.value = setTimeout(() => {
+//       typingUsers.value = [];
+//     }, 2000);
+//   } catch (error) {
+//     console.error('Error checking typing status:', error);
+//   }
+// }
+function formatTime(date) {
+  return dayjs(date).format('h:mm A');
+}
+function getOtherParticipant() {
+  if (!activeConversation.value || activeConversation.value.type !== 'personal') return null;
+  return activeConversation.value.participants.find(p => p.id !== props.current_user.id);
+}
+
+function getOnlineStatus(conversation) {
+  if (conversation.type === 'personal') {
+    const participant = conversation.participants.find(p => p.id !== props.current_user.id);
+    return participant?.is_online || false;
+  }
+  return false;
+}
+function truncate(text, length) {
+  if (!text) return '';
+  return text.length > length ? text.substring(0, length) + '...' : text;
+}
+// ... (keep all other existing methods the same) ...
+
+async function handleTyping() {
+  if (!activeConversation.value || newMessage.value.length === 0) return;
+  
+  try {
+    await axios.post(route('chat.typing'), {
+      conversation_id: activeConversation.value.id,
+      user_id: props.current_user.id,
+      typing: true
+    });
+  } catch (error) {
+    console.error('Error sending typing indicator:', error);
+  }
+}
+
+// Lifecycle hooks
+onMounted(() => {
+  // Check if there's a conversation ID in the URL
+  const conversationId = route().params.conversation;
+  
+  if (conversationId) {
+    const conversation = props.conversations.find(c => c.id == conversationId);
+    if (conversation) {
+      selectConversation(conversation);
+    }
+  }
+  
+  // Start polling for new messages (every 3 seconds)
+  pollingInterval.value = setInterval(checkForNewMessages, 3000);
 });
-watch(selectedConversation, () => {
-  if (selectedConversation.value) {
-    fetchMessages(selectedConversation.value.id);
+onBeforeUnmount(() => {
+  // Clean up intervals
+  clearInterval(pollingInterval.value);
+  clearInterval(typingPollingInterval.value);
+  
+  // Clear any pending typing timeout
+  if (typingTimeout.value) {
+    clearTimeout(typingTimeout.value);
+  }
+});
+
+// Watch for active conversation changes
+watch(activeConversation, (newVal) => {
+  if (newVal) {
+    document.title = `${newVal.name} | Chat`;
+  } else {
+    document.title = 'Chat';
   }
 });
 </script>
-  
-  <style scoped>
 
-/* Base Styles */
-.chat-container {
-  display: flex;
+<style scoped>
+.chat-app {
+  position: relative;
   height: 100vh;
-  font-family: 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-  background-color: var(--bg-dark);
-  color: var(--text-primary);
+  display: flex;
+
 }
 
-/* Conversation List */
-.conversation-list {
-  width: 300px;
-  background-color: var(--bg-darker);
+.chat-sidebar {
+  width: 350px;
   border-right: 1px solid var(--card-border);
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
+  height: 100%;
 }
 
-.conversation-list h3 {
-  padding: 15px;
-  margin: 0;
-  background-color: var(--card-bg);
-  color: var(--text-primary);
-  font-size: 1.2rem;
+.sidebar-header {
+  padding: 16px;
   border-bottom: 1px solid var(--card-border);
-}
-
-.conversation-list ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  flex-grow: 1;
-}
-
-.conversation-list li {
-  padding: 12px 15px;
-  border-bottom: 1px solid var(--card-border);
-  cursor: pointer;
-  transition: background-color 0.2s;
-  position: relative;
   display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
-.conversation-list li:hover {
-  background-color: rgba(255, 255, 255, 0.05);
+.sidebar-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
-.conversation-list li.active {
-  background-color: var(--card-bg);
-  border-left: 3px solid var(--primary);
+.new-chat-button {
+  background-color: var(--primary);
+  color: var(--text-primary);
+  border: none;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.3s;
 }
 
-.latest-message {
-  font-size: 0.85rem;
+.new-chat-button:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.search-container {
+  padding: 16px;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.search-input {
+  width: 100%;
+  padding: 8px 12px;
+  background-color: var(--bg-dark);
+  border: 1px solid var(--card-border);
+  border-radius: 4px;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.search-input::placeholder {
   color: var(--text-secondary);
-  margin-top: 5px;
+}
+
+.conversation-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.conversation-item {
+  display: flex;
+  padding: 12px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--card-border);
+  transition: background-color 0.2s;
+}
+
+.conversation-item:hover {
+  background-color: rgba(255, 140, 0, 0.1);
+}
+
+.conversation-item.active {
+  background-color: var(--primary-light);
+}
+
+.conversation-avatar {
+  position: relative;
+  margin-right: 12px;
+}
+
+.avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.online-indicator {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  background-color: #4caf50;
+  border-radius: 50%;
+  border: 2px solid var(--bg-darker);
+}
+
+.conversation-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.conversation-name {
+  font-weight: 500;
+  margin-bottom: 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 200px;
+  color: var(--text-primary);
 }
 
-.sender-name {
-  color: var(--primary);
-  margin-right: 5px;
-}
-
-.timestamp {
-  float: right;
-  font-size: 0.75rem;
+.conversation-preview {
+  font-size: 13px;
   color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.unread-indicator {
-  position: absolute;
-  top: 10px;
-  right: 10px;
+.conversation-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-left: 8px;
+}
+
+.last-message-time {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.unread-count {
   background-color: var(--primary);
-  color: white;
+  color: var(--text-primary);
   border-radius: 50%;
   width: 20px;
   height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.7rem;
+  font-size: 12px;
+  margin-top: 4px;
 }
 
-/* Message View */
-.message-view {
-  flex-grow: 1;
+.chat-main {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  background-color: var(--bg-dark);
-}
-
-.conversation-header {
-  padding: 15px;
-  margin: 0;
-  background-color: var(--card-bg);
-  color: var(--text-primary);
-  font-size: 1.2rem;
-  border-bottom: 1px solid var(--card-border);
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.messages {
-  flex-grow: 1;
-  padding: 15px;
-  overflow-y: auto;
-  background-color: var(--bg-dark);
   background-image: 
     linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
   background-size: 20px 20px;
-  max-width: 1400px;
+}
+
+.empty-state {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 20px;
+}
+
+.empty-content {
+  max-width: 400px;
+}
+
+.empty-content i {
+  font-size: 48px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+
+.empty-content h3 {
+  margin: 0 0 8px;
+  color: var(--text-primary);
+}
+
+.empty-content p {
+  margin: 0 0 16px;
+  color: var(--text-secondary);
+}
+
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.chat-header {
+  padding: 12px 16px;
+  background-color: var(--card-bg);
+  border-bottom: 1px solid var(--card-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  backdrop-filter: blur(12px);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.back-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  color: var(--text-secondary);
+  display: none;
+  transition: all 0.3s;
+}
+
+.back-button:hover {
+  color: var(--primary);
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.user-info h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.user-status {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.header-right {
+  position: relative;
+}
+
+.header-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  color: var(--text-secondary);
+  margin-left: 12px;
+  transition: all 0.3s;
+}
+
+.header-button:hover {
+  color: var(--primary);
+}
+
+.options-dropdown {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+  min-width: 180px;
+  backdrop-filter: blur(12px);
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.dropdown-item:hover {
+  background-color: var(--primary-light);
+}
+
+.chat-messages {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+    background-image: 
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-image: none;
 }
 
 .message {
-  margin-bottom: 15px;
-  padding: 10px 15px;
-  background-color: var(--card-bg);
-  border-radius: 10px;
-  max-width: 70%;
-  width: fit-content;
-  position: relative;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  word-wrap: break-word;
-  max-width: 70%;
   display: flex;
-  border: 1px solid var(--card-border);
+  margin-bottom: 16px;
 }
 
-.message-right {
-  margin-left: auto;
-  background-color: var(--primary-light);
-  color: var(--text-primary);
-  border: 1px solid var(--primary);
+.message.incoming {
+  justify-content: flex-start;
 }
 
-.message p {
-  margin: 5px 0;
-  word-break: break-word;
+.message.outgoing {
+  justify-content: flex-end;
 }
 
-.message-timestamp {
-  font-size: 0.7rem;
+.message-avatar {
+  margin-right: 8px;
+}
+
+.message-avatar .avatar {
+  width: 32px;
+  height: 32px;
+}
+
+.message-content {
+  max-width: 70%;
+}
+
+.sender-name {
+  font-size: 12px;
   color: var(--text-secondary);
-  display: block;
-  text-align: right;
+  margin-bottom: 4px;
 }
 
-.message-status {
-  margin-left: 5px;
-  font-size: 0.7rem;
+.message-bubble {
+  padding: 8px 12px;
+  border-radius: 18px;
+  position: relative;
+}
+
+.incoming .message-bubble {
+  background-color: var(--card-bg);
+  border-top-left-radius: 0;
+}
+
+.outgoing .message-bubble {
+  background-color: var(--primary-light);
+  border-top-right-radius: 0;
+}
+
+.message-text {
+  font-size: 14px;
+  line-height: 1.4;
+  word-wrap: break-word;
+  color: var(--text-primary);
+}
+
+.message-attachments {
+  margin-top: 8px;
+}
+
+.attachment {
+  margin-bottom: 8px;
+}
+
+.attachment-preview {
+  max-width: 100%;
+  max-height: 200px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.document-attachment {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: var(--card-bg);
+  border-radius: 8px;
+  gap: 8px;
+}
+
+.document-attachment i {
+  font-size: 20px;
+}
+
+.pdf-icon {
+  color: #f44336;
+}
+
+.word-icon {
+  color: #2196f3;
+}
+
+.excel-icon {
+  color: #4caf50;
+}
+
+.ppt-icon {
+  color: #ff9800;
+}
+
+.archive-icon {
+  color: #795548;
+}
+
+.text-icon {
+  color: #607d8b;
+}
+
+.message-meta {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.message-status .seen {
+  color: #4caf50;
+}
+
+.chat-input {
+  padding: 12px 16px;
+  background-color: var(--card-bg);
+  border-top: 1px solid var(--card-border);
+  backdrop-filter: blur(12px);
+}
+
+.attachments-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.attachment-item {
+  display: flex;
+  align-items: center;
+  background-color: var(--bg-dark);
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  gap: 8px;
+  color: var(--text-primary);
+}
+
+.file-name {
+  max-width: 120px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.remove-attachment {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+  margin-left: 4px;
+}
+
+.input-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.input-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  color: var(--text-secondary);
+  padding: 8px;
+  transition: all 0.3s;
+}
+
+.input-button:hover {
   color: var(--primary);
 }
 
-/* Message Input */
+.file-input {
+  display: none;
+}
+
 .message-input {
-  padding: 15px;
-  background-color: var(--card-bg);
-  border-top: 1px solid var(--card-border);
-  display: flex;
-  align-items: center;
-}
-
-.message-input textarea {
-  flex-grow: 1;
-  padding: 10px;
-  border-radius: 5px;
+  flex: 1;
+  padding: 10px 16px;
+  background-color: var(--bg-dark);
   border: 1px solid var(--card-border);
-  background-color: var(--bg-darker);
+  border-radius: 20px;
+  font-size: 14px;
+  outline: none;
   color: var(--text-primary);
-  resize: none;
-  min-height: 50px;
-  max-height: 150px;
-  margin-right: 10px;
 }
 
-.message-input textarea:focus {
-  outline: none;
+.message-input:focus {
   border-color: var(--primary);
 }
 
-.message-input button {
-  padding: 10px 15px;
+.send-button {
   background-color: var(--primary);
-  color: white;
+  color: var(--text-primary);
   border: none;
-  border-radius: 5px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
   cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.message-input button:hover {
-  background-color: color-mix(in srgb, var(--primary) 90%, black);
-}
-
-/* Group Details */
-.group-details {
-  width: 250px;
-  background-color: var(--card-bg);
-  border-left: 1px solid var(--card-border);
-  padding: 15px;
-  overflow-y: auto;
-}
-
-.group-details h4, .group-details h5 {
-  color: var(--primary);
-  margin-top: 0;
-}
-
-.group-details ul {
-  list-style: none;
-  padding: 0;
-}
-
-.group-details li {
-  padding: 5px 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.remove-participant-btn {
-  background: none;
-  border: none;
-  color: #ff5252;
-  cursor: pointer;
-  padding: 2px 5px;
-}
-
-/* Modals */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  transition: all 0.3s;
 }
 
-.modal {
-  background-color: var(--card-bg);
+.send-button:hover:not(:disabled) {
+  transform: scale(1.05);
+}
+
+.send-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Mobile styles */
+@media (max-width: 768px) {
+  .chat-sidebar {
+    width: 100%;
+    display: none;
+  }
+  
+  .chat-sidebar.show {
+    display: flex;
+  }
+  
+  .back-button {
+    display: block;
+  }
+  
+  .message-content {
+    max-width: 85%;
+  }
+}
+
+/* Scrollbar styles */
+.chat-messages::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-messages::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.chat-messages::-webkit-scrollbar-thumb {
+  background: var(--primary);
+  border-radius: 3px;
+}
+
+.chat-messages::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 140, 0, 0.8);
+}
+
+/* Card styles for conversation items */
+.conversation-item {
+  background: var(--card-bg);
+  margin: 8px;
   border-radius: 8px;
-  padding: 20px;
-  width: 90%;
-  max-width: 500px;
-  max-height: 80vh;
-  overflow-y: auto;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
   border: 1px solid var(--card-border);
+  backdrop-filter: blur(12px);
+  transition: all 0.3s;
 }
 
-.modal h3 {
-  margin-top: 0;
-  color: var(--primary);
+.conversation-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(0,0,0,0.2);
 }
-
-.modal label {
-  display: block;
-  margin: 10px 0 5px;
-  color: var(--text-secondary);
-}
-
-.modal input[type="text"] {
-  width: 100%;
-  padding: 8px;
-  border-radius: 4px;
-  border: 1px solid var(--card-border);
-  background-color: var(--bg-darker);
-  color: var(--text-primary);
-}
-
-.user-list {
-  margin: 15px 0;
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-.user-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--card-border);
-}
-
-.add-participant-btn {
-  background-color: var(--primary);
-  color: white;
-  border: none;
-  border-radius: 50%;
-  width: 25px;
-  height: 25px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.selected-participants {
-  margin: 15px 0;
-}
-
-.participant-tag {
-  display: inline-block;
-  background-color: var(--bg-darker);
-  padding: 5px 10px;
-  border-radius: 15px;
-  margin-right: 5px;
-  margin-bottom: 5px;
-}
-
-.participant-tag button {
-  background: none;
-  border: none;
-  color: #ff5252;
-  margin-left: 5px;
-  cursor: pointer;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 20px;
-}
-
-.modal-actions button {
-  padding: 8px 15px;
-  margin-left: 10px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.modal-actions button:first-child {
-  background-color: var(--bg-darker);
-  color: var(--text-primary);
-  border: 1px solid var(--card-border);
-}
-
-.modal-actions button:last-child {
-  background-color: var(--primary);
-  color: white;
-  border: none;
-}
-
-/* Buttons */
-.create-group-btn {
-  margin: 15px;
-  padding: 10px;
-  background-color: var(--primary);
-  color: white;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-}
-
-.create-group-btn:hover {
-  background-color: color-mix(in srgb, var(--primary) 90%, black);
-}
-
-/* Loading Indicator */
-.loading-indicator {
-  text-align: center;
-  padding: 10px;
-  color: var(--text-secondary);
-  font-style: italic;
-}
-
-/* Avatar Styles */
-.sender-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  overflow: hidden;
-  margin-right: 10px;
-  flex-shrink: 0;
-}
-
-.default-avatar {
-  font-size: 18px;
-  font-weight: bold;
-  color: var(--text-secondary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background-color: var(--bg-darker);
-}
-
-/* Responsive Design (keep your existing media queries) */
 </style>

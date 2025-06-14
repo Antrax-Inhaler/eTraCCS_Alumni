@@ -175,19 +175,33 @@ Route::get('/profile/{id}/company-locations', [ProfileController::class, 'compan
 Route::post('/profile/company-locations', [ProfileController::class, 'storeCompanyLocation'])->name('profile.companyLocation.store');
 Route::put('/profile/company-locations/{location}', [ProfileController::class, 'updateCompanyLocation'])->name('profile.companyLocation.update');
 Route::delete('/profile/company-locations/{location}', [ProfileController::class, 'destroyCompanyLocation'])->name('profile.companyLocation.destroy');
-Route::get('/chat/start/{user}', [ChatController::class, 'start'])->name('chat.start');
-Route::get('/chat/messages/{user}', [ChatController::class, 'fetchMessages'])->name('chat.messages');
-Route::post('/chat/send/{user}', [ChatController::class, 'sendMessage'])->name('chat.send');
-Route::post('/chat/seen/{user}', [ChatController::class, 'markAsSeen'])->name('chat.markAsSeen');
-Route::get('/chat/message/statuses', [ChatController::class, 'getMessageStatuses'])->name('chat.message.statuses');
-
+ Route::get('/chat', [ChatController::class, 'index'])->name('chat.index');
+ // New route specifically for the chat interface
+Route::get('/chat/{conversation?}', [ChatController::class, 'showChatInterface'])->name('chat.show');
+    Route::get('/chat/start/{user}', [ChatController::class, 'start'])->name('chat.start');
+    Route::get('/chat/conversation/{conversation}', [ChatController::class, 'showConversation'])->name('chat.conversation');
+    Route::get('/chat/conversation/{conversation?}', [ChatController::class, 'showConversation'])->name('chat.conversation');
+    Route::get('/chat/messages/{user}', [ChatController::class, 'fetchMessages'])->name('chat.messages');
+    Route::get('/chat/conversation-messages/{conversation}', [ChatController::class, 'fetchConversationMessages'])->name('chat.conversation-messages');
+    Route::post('/chat/send/{user}', [ChatController::class, 'sendMessage'])->name('chat.send');
+    Route::post('/chat/conversation/send/{conversation}', [ChatController::class, 'sendToConversation'])->name('chat.conversation.send');
+    Route::post('/chat/seen/{user}', [ChatController::class, 'markAsSeen'])->name('chat.markAsSeen');
+    Route::post('/chat/conversation/seen/{conversation}', [ChatController::class, 'markConversationAsSeen'])->name('chat.conversation.markAsSeen');
+    Route::get('/chat/message/statuses', [ChatController::class, 'getMessageStatuses'])->name('chat.message.statuses');
+    Route::get('/chat/search', [ChatController::class, 'searchUsers'])->name('chat.search');
+    Route::post('/chat/create-group', [ChatController::class, 'createGroup'])->name('chat.create-group');
+    Route::post('/chat/group/add-members', [ChatController::class, 'addGroupMembers'])->name('chat.group.add-members');
+    Route::post('/chat/group/remove-member', [ChatController::class, 'removeGroupMember'])->name('chat.group.remove-member');
+    Route::post('/chat/group/update', [ChatController::class, 'updateGroup'])->name('chat.group.update');
+    Route::post('/chat/group/leave', [ChatController::class, 'leaveGroup'])->name('chat.group.leave');
+Route::get('/chat/typing-status/{conversation}', [ChatController::class, 'getTypingStatus'])
+     ->name('chat.typing-status');
+Route::post('/chat/typing', [ChatController::class, 'setTypingStatus'])->name('chat.typing');
 Route::get('/map', [MapController::class, 'getCompanyLocationsWithUsers'])
     ->name('map.index');
     Route::get('/themes', [ThemeController::class, 'index'])->name('user.themes');
     Route::put('/themes', [ThemeController::class, 'update'])->name('user.theme.update');
-    Route::get('/chat', function () {
-        return inertia('Chat/Index'); // This points to the Chat/Index.vue component
-    })->name('chat.index');
+
 // Route::get('/reshown-items', [JobPostingController::class, 'reshownItems'])->name('reshown-items.index');
 Route::get('/job-postings', [JobPostingController::class, 'index'])->name('job-postings.index');
 
@@ -207,7 +221,6 @@ Route::get('/job-postings', [JobPostingController::class, 'index'])->name('job-p
 
     Route::post('/comment', [CommentController::class, 'store']);
     Route::delete('/delete', [JobPostingController::class, 'delete']);
-    Route::get('/chat/{encryptedId}', [ChatController::class, 'showConversation'])->name('chat.show');
 
     
 

@@ -36,5 +36,8 @@ public function latestMessage()
 {
     return $this->hasOne(Message::class)->latestOfMany();
 }
-
+public function lastMessage()
+{
+    return $this->hasOne(Message::class)->latestOfMany();
+}
 }

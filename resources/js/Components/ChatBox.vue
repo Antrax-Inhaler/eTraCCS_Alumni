@@ -822,7 +822,7 @@ width: calc(100vw - 32px) !important;
     justify-content: center;
     cursor: pointer;
   }
-
+  
   /* Chat list overlay */
   .chat-list-overlay {
     position: fixed;

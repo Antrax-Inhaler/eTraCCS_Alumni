@@ -2,603 +2,316 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use App\Models\Conversation;
 use App\Models\User;
-use App\Models\EducationalBackground;
-use Illuminate\Support\Facades\Auth;
 use App\Models\Message;
-use App\Models\Chat;
+use App\Models\Conversation;
 use App\Models\Attachment;
 use App\Models\ConversationParticipant;
+use Illuminate\Http\Request;
+use App\Events\NewMessage;
 use Inertia\Inertia;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Cache;
+
+use Illuminate\Support\Str;
 
 class ChatController extends Controller
 {
-    /**
-     * Fetch paginated conversations for the current user.
-     *
-     * @param Request $request
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function index(Request $request)
+    public function index()
     {
-        // Get query parameters
-        $type = $request->input('type'); // 'global', 'batch', 'campus', 'personal', 'group'
-        $page = $request->input('page', 1);
-        $perPage = $request->input('per_page', 10);
-    
-        // Current authenticated user
-        $user = Auth::user();
-    
-        // Query to fetch conversations
-        $query = Conversation::whereHas('participants', function ($q) use ($user) {
-            $q->where('user_id', $user->id);
-        });
-    
-        // Filter by conversation type
-        if ($type) {
-            $query->where('type', $type);
-        }
-    
-        // Subquery to get the latest message ID for each conversation
-        $latestMessageQuery = Message::select('id')
-            ->whereColumn('conversation_id', 'conversations.id')
-            ->orderByDesc('created_at')
-            ->limit(1);
-    
-        // Fetch conversations with participants and the latest message
-        $conversations = $query->with(['participants.user'])
-            ->addSelect([
-                'latest_message_id' => $latestMessageQuery,
-            ])
-            ->with(['latestMessage' => function ($q) {
-                $q->with('sender'); // Include sender details
-            }])
-            ->orderByDesc('updated_at') // Order conversations by most recent activity
-            ->paginate($perPage, ['*'], 'page', $page);
-    
-        // Format the response
-        return response()->json([
-            'data' => $conversations->map(function ($conversation) {
+        $user = auth()->user();
+        
+        // Get all conversations for the user with last message and participants
+        $conversations = Conversation::with(['participants.user', 'lastMessage'])
+            ->whereHas('participants', function($query) use ($user) {
+                $query->where('user_id', $user->id);
+            })
+            ->orderByDesc(
+                Message::select('created_at')
+                    ->whereColumn('messages.conversation_id', 'conversations.id')
+                    ->latest()
+                    ->take(1)
+            )
+            ->get()
+            ->map(function ($conversation) use ($user) {
+                $unreadCount = $this->getUnreadCount($conversation->id, $user->id);
+                
+                // For personal conversations, get the other participant
+                $otherParticipant = null;
+                if ($conversation->type === 'personal') {
+                    $otherParticipant = $conversation->participants
+                        ->where('user_id', '!=', $user->id)
+                        ->first()
+                        ->user ?? null;
+                }
+                
                 return [
                     'id' => $conversation->id,
-                    'name' => $conversation->name ?? null,
                     'type' => $conversation->type,
-                    'encrypted_id' => encrypt($conversation->id),
-                    'profile_picture' => $conversation->profile_picture
-                    ? '/storage/' . $conversation->profile_picture
-                    : null,
+                    'name' => $conversation->name ?? ($otherParticipant ? $otherParticipant->full_name : 'Group Chat'),
+                    'avatar' => $conversation->avatar ?? ($otherParticipant ? $otherParticipant->profile_photo_url : null),
+                    'last_message' => $conversation->lastMessage ? [
+                        'content' => $conversation->lastMessage->content,
+                        'sender_name' => $conversation->lastMessage->sender->full_name,
+                        'created_at' => $conversation->lastMessage->created_at,
+                        'is_current_user' => $conversation->lastMessage->sender_id === $user->id,
+                    ] : null,
+                    'unread_count' => $unreadCount,
                     'participants' => $conversation->participants->map(function ($participant) {
                         return [
-                            'user_id' => $participant->user_id,
-                            'name' => $participant->user->name,
+                            'id' => $participant->user_id,
+                            'name' => $participant->user->full_name,
+                            'avatar' => $participant->user->profile_photo_url,
+                            'is_online' => $participant->user->is_online,
                         ];
                     }),
-                    'latest_message' => $conversation->latestMessage
-                        ? [
-                            'content' => $conversation->latestMessage->content,
-                            'sender_name' => $conversation->latestMessage->sender->name,
-                            'created_at' => $conversation->latestMessage->created_at,
-                        ]
-                        : null,
+                    'created_at' => $conversation->created_at,
                 ];
-            }),
-            'pagination' => [
-                'current_page' => $conversations->currentPage(),
-                'last_page' => $conversations->lastPage(),
-                'total' => $conversations->total(),
-                'per_page' => $conversations->perPage(),
-                'has_more' => $conversations->hasMorePages(),
+            });
+
+        return Inertia::render('Chat/Index', [
+            'conversations' => $conversations,
+            'current_user' => [
+                'id' => $user->id,
+                'name' => $user->full_name,
+                'avatar' => $user->profile_photo_url,
             ],
         ]);
     }
+
     public function start(User $user)
     {
-        // You can pass the target user to the chat view
-        return Inertia::render('Chat/ChatBox', [
-            'user' => $user,
-        ]);
-    }
-    public function getMessages(User $user)
-{
-    $authUserId = auth()->id();
-
-    $messages = Chat::where(function($query) use ($authUserId, $user) {
-        $query->where('sender_id', $authUserId)->where('receiver_id', $user->id);
-    })->orWhere(function($query) use ($authUserId, $user) {
-        $query->where('sender_id', $user->id)->where('receiver_id', $authUserId);
-    })->orderBy('created_at', 'asc')->get();
-
-    return back()->with('messages', $messages);
-}
-
-
-
-public function send(Request $request)
-{
-    $chat = Chat::create([
-        'sender_id' => auth()->id(),
-        'receiver_id' => $request->receiver_id,
-        'message' => $request->message,
-    ]);
-
-    return back();
-}
-
-    public function fetchConversations(Request $request)
-    {
-        // Fetch conversations with participants and the latest message
-        $conversations = Conversation::with(['participants.user'])
-            ->whereHas('participants', function ($query) {
-                $query->where('user_id', Auth::id());
-            })
-            ->with(['messages' => function ($query) {
-                $query->latest()->limit(1); // Fetch only the latest message
-            }])
-            ->get();
-    
-        // Add encrypted_id and format the response
-        return $conversations->map(function ($conversation) {
-            $conversation->encrypted_id = encrypt($conversation->id); // Encrypt the ID
-    
-            // Extract the latest message details
-            $latestMessage = $conversation->messages->first();
-            $conversation->latest_message = $latestMessage
-                ? [
-                    'content' => $latestMessage->content,
-                    'sender_name' => $latestMessage->sender->name,
-                    'created_at' => $latestMessage->created_at,
-                ]
-                : null;
-                $conversation->profile_picture = $conversation->profile_picture
-                ? '/storage/' . $conversation->profile_picture
-                : null;
+        $authUser = auth()->user();
         
-            return $conversation;
-        });
-    }
-public function showConversation($encryptedId)
-{
-    try {
-        // Decrypt the ID
-        $conversationId = decrypt($encryptedId);
-
-        // Fetch the conversation
-        $conversation = Conversation::with(['messages.sender', 'messages.attachments'])
-            ->findOrFail($conversationId);
-
-        // Ensure the user is a participant of the conversation
-        if (!$conversation->participants()->where('user_id', Auth::id())->exists()) {
-            abort(403, 'You are not a participant of this conversation.');
-        }
-
-        return Inertia::render('Chat/Show', [
-            'conversation' => $conversation,
-        ]);
-    } catch (\Exception $e) {
-        abort(404, 'Conversation not found.');
-    }
-}
-    // public function sendMessage(Request $request)
-    // {
-    //     $request->validate([
-    //         'conversation_id' => 'required|exists:conversations,id',
-    //         'content' => 'nullable|string', // Optional if only sending attachments
-    //         'reply_to_message_id' => 'nullable|exists:messages,id',
-    //         'attachments' => 'nullable|array',
-    //         'attachments.*' => 'file|mimes:jpeg,png,jpg,gif,mp4,pdf|max:10240', // Max 10MB
-    //     ]);
-
-    //     // Create the message
-    //     $message = Message::create([
-    //         'conversation_id' => $request->input('conversation_id'),
-    //         'sender_id' => Auth::id(),
-    //         'content' => $request->input('content'),
-    //         'reply_to_message_id' => $request->input('reply_to_message_id'),
-    //     ]);
-
-    //     // Handle attachments
-    //     if ($request->hasFile('attachments')) {
-    //         foreach ($request->file('attachments') as $file) {
-    //             $filePath = $file->store('attachments', 'public'); // Store file in storage/app/public/attachments
-    //             $fileType = match ($file->getMimeType()) {
-    //                
-    //                 default => 'document',
-    //             };
-
-    //             Attachment::create([
-    //                 'message_id' => $message->id,
-    //                 'file_path' => $filePath,
-    //                 'file_type' => $fileType,
-    //             ]);
-    //         }
-    //     }
-
-    //     return response()->json($message->load('attachments'));
-    // }
-    /**
-     * Create or fetch a global chat room.
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
-    
-    public function getGlobalChat()
-    {
-        $conversation = Conversation::firstOrCreate(
-            ['type' => 'global'],
-            ['name' => 'Global Alumni Chat']
-        );
-
-        // Ensure the current user is a participant
-        $conversation->participants()->firstOrCreate([
-            'user_id' => Auth::id(),
-        ]);
-
-        return response()->json($conversation);
-    }
-
-    /**
-     * Create or fetch a batch-specific chat room.
-     *
-     * @param int $year
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function getBatchChat($year)
-    {
-        $conversation = Conversation::firstOrCreate(
-            ['type' => 'batch', 'year_graduated' => $year],
-            ['name' => "Batch $year Chat"]
-        );
-
-        // Add all users from the same batch as participants
-        $usersInBatch = EducationalBackground::where('year_graduated', $year)
-            ->pluck('user_id');
-
-        foreach ($usersInBatch as $userId) {
-            $conversation->participants()->firstOrCreate(['user_id' => $userId]);
-        }
-
-        return response()->json($conversation);
-    }
-
-    /**
-     * Create or fetch a campus-specific chat room.
-     *
-     * @param string $campus
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function getCampusChat($campus)
-    {
-        $conversation = Conversation::firstOrCreate(
-            ['type' => 'campus', 'campus' => $campus],
-            ['name' => "$campus Campus Chat"]
-        );
-
-        // Add all users from the same campus as participants
-        $usersInCampus = EducationalBackground::where('campus', $campus)
-            ->pluck('user_id');
-
-        foreach ($usersInCampus as $userId) {
-            $conversation->participants()->firstOrCreate(['user_id' => $userId]);
-        }
-
-        return response()->json($conversation);
-    }
-
-    /**
-     * Create or fetch a personal chat between two users.
-     *
-     * @param int $userId
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function getPersonalChat($userId)
-    {
-        $currentUser = Auth::id();
+        // Find or create conversation
         $conversation = Conversation::where('type', 'personal')
-            ->whereHas('participants', function ($q) use ($currentUser, $userId) {
-                $q->whereIn('user_id', [$currentUser, $userId])
-                  ->groupBy('conversation_id')
-                  ->havingRaw('COUNT(DISTINCT user_id) = 2');
-            })
+            ->whereHas('participants', fn($q) => $q->where('user_id', $authUser->id))
+            ->whereHas('participants', fn($q) => $q->where('user_id', $user->id))
             ->first();
 
         if (!$conversation) {
-            // Create a new personal conversation
-            $conversation = Conversation::create(['type' => 'personal']);
-            $conversation->participants()->createMany([
-                ['user_id' => $currentUser],
-                ['user_id' => $userId],
-            ]);
-        }
-
-        return response()->json($conversation);
-    }
-
-    /**
-     * Create a new user-defined group chat.
-     *
-     * @param Request $request
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function createGroupChat(Request $request)
-    {
-        try {
-            // Validate the request data
-            $validated = $request->validate([
-                'name' => 'required|string|max:255',
-                'participants' => 'required|array|min:1',
-                'participants.*' => 'exists:users,id',
-                'profile_picture' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', // Optional image upload
-            ]);
-    
-            // Handle profile picture upload
-            $profilePicturePath = null;
-            if ($request->hasFile('profile_picture')) {
-                $profilePicturePath = $request->file('profile_picture')->store('group_profile_pictures', 'public');
-            }
-    
-            // Create the conversation
             $conversation = Conversation::create([
-                'type' => 'group',
-                'name' => $validated['name'],
-                'created_by' => Auth::id(),
-                'profile_picture' => $profilePicturePath, // Save the file path
+                'type' => 'personal',
+                'created_by' => $authUser->id,
             ]);
-    
-            // Add participants to the group
-            $participants = array_unique(array_merge([$request->user()->id], $validated['participants']));
-            $conversation->participants()->createMany(array_map(function ($userId) {
-                return ['user_id' => $userId];
-            }, $participants));
-    
-            // Return the created conversation
-            return response()->json($conversation, 201);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            // Return validation errors as JSON
-            return response()->json(['errors' => $e->errors()], 422);
-        } catch (\Exception $e) {
-            // Log the error and return a 500 response
-            \Log::error('Error creating group chat: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to create group chat'], 500);
+
+            ConversationParticipant::insert([
+                ['conversation_id' => $conversation->id, 'user_id' => $authUser->id, 'joined_at' => now()],
+                ['conversation_id' => $conversation->id, 'user_id' => $user->id, 'joined_at' => now()],
+            ]);
         }
-    }
-    // public function fetchMessages(Request $request, $conversationId)
-    // {
-    //     // Get query parameters
-    //     $page = $request->input('page', 1); // Current page
-    //     $perPage = $request->input('per_page', 20); // Number of messages per page
-    
-    //     // Fetch paginated messages for the conversation in descending order
-    //     $messages = Message::where('conversation_id', $conversationId)
-    //         ->with(['sender' => function ($query) {
-    //             $query->select('id', 'name', 'profile_photo_path'); // Include only necessary fields
-    //         }, 'attachments'])
-    //         ->orderBy('created_at', 'desc') // Reverse chronological order
-    //         ->paginate($perPage, ['*'], 'page', $page);
-    
-    //     // Format the response
-    //     return response()->json([
-    //         'data' => $messages->map(function ($message) {
-    //             return [
-    //                 'id' => $message->id,
-    //                 'content' => $message->content,
-    //                 'sender_id' => $message->sender_id,
-    //                 'sender_name' => $message->sender->name,
-    //                 'sender_profile_picture' => $message->sender->profile_photo_path
-    //                     ? '/storage/' . $message->sender->profile_photo_path
-    //                     : null,
-    //                 'attachments' => $message->attachments->map(function ($attachment) {
-    //                     return [
-    //                         'file_type' => $attachment->file_type,
-    //                         'file_path' => $attachment->file_path,
-    //                     ];
-    //                 }),
-    //                 'status' => $message->status,
-    //                 'reply_to_message_id' => $message->reply_to_message_id,
-    //                 'created_at' => $message->created_at,
-    //             ];
-    //         }),
-    //         'pagination' => [
-    //             'current_page' => $messages->currentPage(),
-    //             'last_page' => $messages->lastPage(),
-    //             'total' => $messages->total(),
-    //             'per_page' => $messages->perPage(),
-    //             'has_more' => $messages->hasMorePages(),
-    //         ],
-    //     ]);
-    // }
-    // Add this new method to your controller
-public function fetchNewMessages(Request $request)
-{
-    $request->validate([
-        'conversation_id' => 'required|exists:conversations,id',
-        'last_message_id' => 'nullable|integer', // ID of the last known message
-    ]);
 
-    $conversation = Conversation::findOrFail($request->conversation_id);
-    
-    // Verify user is a participant
-    if (!$conversation->participants()->where('user_id', Auth::id())->exists()) {
-        abort(403, 'Unauthorized');
+        return redirect()->route('chat.conversation', $conversation);
     }
 
-    $query = $conversation->messages()->with(['sender', 'attachments']);
-
-    if ($request->last_message_id) {
-        $query->where('id', '>', $request->last_message_id);
-    }
-
-    $messages = $query->orderBy('created_at', 'desc')
-                      ->limit(50) // Limit to prevent too much data
-                      ->get();
-
-    return response()->json([
-        'messages' => $messages,
-        'last_message_id' => $messages->isNotEmpty() ? $messages->last()->id : null,
-    ]);
-}
-public function fetchUsers()
-{
-    return User::select('id', 'name')->get();
-}
-public function addParticipant(Request $request, $conversationId)
-{
-    $request->validate([
-        'user_id' => 'required|exists:users,id',
-    ]);
-
-    $conversation = Conversation::findOrFail($conversationId);
-
-    // Ensure the authenticated user is a participant of the group
-    if (!$conversation->participants()->where('user_id', Auth::id())->exists()) {
-        return response()->json(['error' => 'You are not a participant of this group'], 403);
-    }
-
-    // Add the participant to the group
-    $conversation->participants()->create([
-        'user_id' => $request->input('user_id'),
-    ]);
-
-    return response()->json(['message' => 'Participant added successfully']);
-}
-public function removeParticipant(Request $request, $conversationId)
-{
-    $request->validate([
-        'user_id' => 'required|exists:users,id',
-    ]);
-
-    $conversation = Conversation::findOrFail($conversationId);
-
-    // Ensure the authenticated user is either the creator or the participant being removed
-    if ($request->input('user_id') !== Auth::id() && $conversation->created_by !== Auth::id()) {
-        return response()->json(['error' => 'You are not authorized to remove this participant'], 403);
-    }
-
-    // Remove the participant from the group
-    $conversation->participants()->where('user_id', $request->input('user_id'))->delete();
-
-    return response()->json(['message' => 'Participant removed successfully']);
-}
-public function showGroupDetails($conversationId)
-{
-    $conversation = Conversation::with(['participants.user', 'creator'])->findOrFail($conversationId);
-
-    return response()->json($conversation);
-}
-public function markMessagesAsDelivered(Request $request, $conversationId)
-{
-    $request->validate([
-        'message_ids' => 'required|array',
-        'message_ids.*' => 'exists:messages,id',
-    ]);
-
-    Message::whereIn('id', $request->input('message_ids'))
-        ->where('conversation_id', $conversationId)
-        ->update(['status' => 'delivered']);
-
-    return response()->json(['message' => 'Messages marked as delivered']);
-}
-// public function markMessagesAsSeen(Request $request, $conversationId)
-// {
-//     $request->validate([
-//         'message_ids' => 'required|array',
-//         'message_ids.*' => 'exists:messages,id',
-//     ]);
-
-//     Message::whereIn('id', $request->input('message_ids'))
-//         ->where('conversation_id', $conversationId)
-//         ->update(['status' => 'seen']);
-
-//     return response()->json(['message' => 'Messages marked as seen']);
-// }
-public function longPollMessages(Request $request)
-{
-    $request->validate([
-        'conversation_id' => 'required|exists:conversations,id',
-        'last_message_id' => 'nullable|integer',
-        'timeout' => 'nullable|integer|max:30', // Max 30 seconds
-    ]);
-
-    $timeout = $request->timeout ?? 25; // Default 25 seconds
-    $startTime = time();
-    $conversation = Conversation::findOrFail($request->conversation_id);
-
-    // Verify user is a participant
-    if (!$conversation->participants()->where('user_id', Auth::id())->exists()) {
-        abort(403, 'Unauthorized');
-    }
-
-    do {
-        $query = $conversation->messages()->with(['sender', 'attachments']);
+    public function showConversation(Conversation $conversation)
+    {
+        $user = auth()->user();
         
-        if ($request->last_message_id) {
-            $query->where('id', '>', $request->last_message_id);
+        // Verify user is part of this conversation
+        if (!$conversation->participants->contains('user_id', $user->id)) {
+            abort(403);
         }
 
-        $messages = $query->orderBy('created_at', 'desc')->get();
+        // Mark messages as seen
+        $this->markConversationAsSeen($conversation);
 
+        $conversation->load(['participants.user']);
+
+        // For personal conversations, get the other participant
+        $otherParticipant = null;
+        if ($conversation->type === 'personal') {
+            $otherParticipant = $conversation->participants
+                ->where('user_id', '!=', $user->id)
+                ->first()
+                ->user ?? null;
+        }
+
+        return Inertia::render('Chat/Conversation', [
+            'conversation' => [
+                'id' => $conversation->id,
+                'type' => $conversation->type,
+                'name' => $conversation->name ?? ($otherParticipant ? $otherParticipant->full_name : 'Group Chat'),
+                'avatar' => $conversation->avatar ?? ($otherParticipant ? $otherParticipant->profile_photo_url : null),
+                'participants' => $conversation->participants->map(function ($participant) {
+                    return [
+                        'id' => $participant->user_id,
+                        'name' => $participant->user->full_name,
+                        'avatar' => $participant->user->profile_photo_url,
+                        'is_online' => $participant->user->is_online,
+                    ];
+                }),
+                'is_admin' => $conversation->created_by === $user->id,
+                'created_at' => $conversation->created_at,
+            ],
+            'current_user' => [
+                'id' => $user->id,
+                'name' => $user->full_name,
+                'avatar' => $user->profile_photo_url,
+            ],
+        ]);
+    }
+
+    public function fetchMessages(User $user)
+    {
+        $authId = auth()->id();
+        $lastMessageId = request('last_id');
+
+        // Find conversation between authenticated user and target user
+        $conversation = Conversation::where('type', 'personal')
+            ->whereHas('participants', fn($q) => $q->where('user_id', $authId))
+            ->whereHas('participants', fn($q) => $q->where('user_id', $user->id))
+            ->first();
+
+        if (!$conversation) {
+            return response()->json(['messages' => []]);
+        }
+
+        return $this->fetchConversationMessages($conversation, $lastMessageId);
+    }
+
+    public function fetchConversationMessages(Conversation $conversation, $lastMessageId = null)
+    {
+        $authId = auth()->id();
+
+        // Verify user is part of this conversation
+        if (!$conversation->participants->contains('user_id', $authId)) {
+            abort(403);
+        }
+
+        // Build query for fetching messages
+        $query = Message::where('conversation_id', $conversation->id)
+            ->with(['attachments', 'sender'])
+            ->orderBy('id');
+
+        if ($lastMessageId) {
+            $query->where('id', '>', $lastMessageId);
+        }
+
+        // Fetch messages with relationships
+        $messages = $query->get();
+
+        // Mark outgoing messages (from auth user) as delivered
         if ($messages->isNotEmpty()) {
-            return response()->json([
-                'messages' => $messages,
-                'last_message_id' => $messages->last()->id,
+            Message::where('conversation_id', $conversation->id)
+                ->where('sender_id', $authId)
+                ->where('status', 'sent')
+                ->where('id', '<=', $messages->last()->id)
+                ->update(['status' => 'delivered']);
+        }
+
+        // Format the messages
+        $formattedMessages = $messages->map(function ($message) use ($authId) {
+            return [
+                'id' => $message->id,
+                'sender_id' => $message->sender_id,
+                'is_current_user' => $message->sender_id === $authId,
+                'content' => $message->content,
+                'created_at' => $message->created_at,
+                'status' => $message->status,
+                'attachments' => $message->attachments->map(function ($attachment) {
+                    return [
+                        'id' => $attachment->id,
+                        'file_path' => asset('storage/' . $attachment->file_path),
+                        'file_type' => $attachment->file_type,
+                    ];
+                }),
+                'sender_name' => $message->sender->full_name,
+                'sender_profile_photo_url' => $message->sender->profile_photo_url,
+            ];
+        });
+
+        return response()->json([
+            'messages' => $formattedMessages,
+            'auth_user_id' => $authId,
+        ]);
+    }
+
+    public function sendMessage(Request $request, User $user)
+    {
+        $request->validate([
+            'message' => 'nullable|string',
+            'attachments.*' => 'file|max:51200' // max 10MB per file
+        ]);
+
+        $authId = auth()->id();
+
+        // Check for an existing personal conversation between these two users
+        $conversation = Conversation::where('type', 'personal')
+            ->whereHas('participants', function ($q) use ($authId) {
+                $q->where('user_id', $authId);
+            })
+            ->whereHas('participants', function ($q) use ($user) {
+                $q->where('user_id', $user->id);
+            })
+            ->first();
+
+        // Create conversation if not exists
+        if (!$conversation) {
+            $conversation = Conversation::create([
+                'type' => 'personal',
+                'created_by' => $authId,
+            ]);
+
+            ConversationParticipant::insert([
+                ['conversation_id' => $conversation->id, 'user_id' => $authId, 'joined_at' => now()],
+                ['conversation_id' => $conversation->id, 'user_id' => $user->id, 'joined_at' => now()],
             ]);
         }
 
-        // Sleep for 1 second before checking again
-        sleep(1);
-    } while (time() - $startTime < $timeout);
-
-    return response()->json([
-        'messages' => [],
-        'last_message_id' => $request->last_message_id,
-    ]);
-}
-public function fetchMessages(User $user)
-{
-    $authId = auth()->id();
-    $lastMessageId = request('last_id');
-
-    // Find conversation between authenticated user and target user
-    $conversation = Conversation::where('type', 'personal')
-        ->whereHas('participants', fn($q) => $q->where('user_id', $authId))
-        ->whereHas('participants', fn($q) => $q->where('user_id', $user->id))
-        ->first();
-
-    if (!$conversation) {
-        return response()->json(['messages' => []]);
+        return $this->sendToConversation($request, $conversation);
     }
 
-    // Build query for fetching messages
-    $query = Message::where('conversation_id', $conversation->id)
-        ->orderBy('id');
+    public function sendToConversation(Request $request, Conversation $conversation)
+    {
+        $request->validate([
+            'message' => 'nullable|string',
+            'attachments.*' => 'file|max:51200' // max 10MB per file
+        ]);
 
-    if ($lastMessageId) {
-        $query->where('id', '>', $lastMessageId);
-    }
+        $authId = auth()->id();
 
-    // Fetch messages with relationships
-    $messages = $query->with(['attachments', 'sender'])->get();
+        // Verify user is part of this conversation
+        if (!$conversation->participants->contains('user_id', $authId)) {
+            abort(403);
+        }
 
-    // Mark outgoing messages (from auth user) as delivered
-    if ($messages->isNotEmpty()) {
-        Message::where('conversation_id', $conversation->id)
-            ->where('sender_id', $authId)
-            ->where('status', 'sent')
-            ->where('id', '<=', $messages->last()->id)
-            ->update(['status' => 'delivered']);
-    }
+        // Save the message (even if it's just an attachment)
+        $message = Message::create([
+            'conversation_id' => $conversation->id,
+            'sender_id' => $authId,
+            'content' => $request->message ?? '',
+            'status' => 'sent',
+        ]);
 
-    // Format the messages
-    $formattedMessages = $messages->map(function ($message) use ($authId) {
-        return [
+        // Handle attachments if any
+        if ($request->hasFile('attachments')) {
+            foreach ($request->file('attachments') as $file) {
+                $filePath = $file->store('attachments', 'public');
+
+                $mime = $file->getMimeType();
+                $fileType = match (true) {
+                    str_starts_with($mime, 'image/') => 'image',
+                    str_starts_with($mime, 'video/') => 'video',
+                    default => 'document',
+                };
+
+                Attachment::create([
+                    'message_id' => $message->id,
+                    'file_path' => $filePath,
+                    'file_type' => $fileType,
+                ]);
+            }
+        }
+
+        // Broadcast event for real-time updates
+        event(new NewMessage($message));
+
+        return response()->json([
             'id' => $message->id,
             'sender_id' => $message->sender_id,
-            'is_current_user' => $message->sender_id === $authId,
             'content' => $message->content,
             'created_at' => $message->created_at,
-            'status' => $message->status, // Include status in response
             'attachments' => $message->attachments->map(function ($attachment) {
                 return [
                     'id' => $attachment->id,
@@ -606,120 +319,396 @@ public function fetchMessages(User $user)
                     'file_type' => $attachment->file_type,
                 ];
             }),
-            'sender_name' => $message->sender?->name,
-            'sender_profile_photo_url' => $message->sender?->profile_photo_url,
-        ];
-    });
+            'sender_name' => $message->sender->full_name,
+            'sender_profile_photo_url' => $message->sender->profile_photo_url,
+        ]);
+    }
 
-    return response()->json([
-        'messages' => $formattedMessages,
-        'auth_user_id' => $authId,
-    ]);
-}
+    public function markAsSeen(User $user)
+    {
+        $authId = auth()->id();
 
-public function sendMessage(Request $request, User $user)
+        $conversation = Conversation::where('type', 'personal')
+            ->whereHas('participants', fn($q) => $q->where('user_id', $authId))
+            ->whereHas('participants', fn($q) => $q->where('user_id', $user->id))
+            ->first();
+
+        if (!$conversation) {
+            return response()->json(['error' => 'Conversation not found'], 404);
+        }
+
+        return $this->markConversationAsSeen($conversation);
+    }
+
+    public function markConversationAsSeen(Conversation $conversation)
+    {
+        $authId = auth()->id();
+
+        // Verify user is part of this conversation
+        if (!$conversation->participants->contains('user_id', $authId)) {
+            abort(403);
+        }
+
+        // Mark all messages from other users as seen
+        Message::where('conversation_id', $conversation->id)
+            ->where('sender_id', '!=', $authId)
+            ->where('status', '!=', 'seen')
+            ->update(['status' => 'seen']);
+
+        return response()->json(['success' => true]);
+    }
+
+    public function getMessageStatuses(Request $request)
+    {
+        $ids = $request->query('ids');
+        if (!$ids) return response()->json(['statuses' => []]);
+
+        $messageIds = explode(',', $ids);
+        $statuses = Message::whereIn('id', $messageIds)
+            ->where('sender_id', auth()->id())
+            ->get(['id', 'status']);
+
+        return response()->json([
+            'statuses' => $statuses->pluck('status', 'id')
+        ]);
+    }
+
+public function searchUsers(Request $request)
 {
-    $request->validate([
-        'message' => 'nullable|string',
-        'attachments.*' => 'file|max:51200' // max 10MB per file
-    ]);
-
+    $query = $request->query('q');
     $authId = auth()->id();
 
-    // Check for an existing personal conversation between these two users
-    $conversation = Conversation::where('type', 'personal')
-        ->whereHas('participants', function ($q) use ($authId) {
-            $q->where('user_id', $authId);
-        })
-        ->whereHas('participants', function ($q) use ($user) {
-            $q->where('user_id', $user->id);
-        })
-        ->first();
+    if (!$query) {
+        return response()->json([]);
+    }
 
-    // Create conversation if not exists
-    if (!$conversation) {
+    return User::where('id', '!=', $authId)
+        ->where(function($q) use ($query) {
+            $q->where('name', 'like', "%{$query}%")
+              ->orWhere('email', 'like', "%{$query}%");
+        })
+        ->limit(10)
+        ->get()
+        ->map(function ($user) {
+            return [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'profile_photo_url' => $user->profile_photo_url,
+                'is_online' => $user->is_online,
+            ];
+        });
+}
+    public function createGroup(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'members' => 'required|array|min:1',
+            'members.*' => 'exists:users,id',
+            'avatar' => 'nullable|image|max:2048',
+        ]);
+
+        $authId = auth()->id();
+        $members = array_unique(array_merge($request->members, [$authId]));
+
+        // Create conversation
         $conversation = Conversation::create([
-            'type' => 'personal',
+            'type' => 'group',
+            'name' => $request->name,
             'created_by' => $authId,
         ]);
 
-        ConversationParticipant::insert([
-            ['conversation_id' => $conversation->id, 'user_id' => $authId, 'joined_at' => now()],
-            ['conversation_id' => $conversation->id, 'user_id' => $user->id, 'joined_at' => now()],
+        // Handle avatar upload
+        if ($request->hasFile('avatar')) {
+            $path = $request->file('avatar')->store('group-avatars', 'public');
+            $conversation->update(['avatar' => $path]);
+        }
+
+        // Add participants
+        $participants = [];
+        foreach ($members as $memberId) {
+            $participants[] = [
+                'conversation_id' => $conversation->id,
+                'user_id' => $memberId,
+                'joined_at' => now(),
+            ];
+        }
+        ConversationParticipant::insert($participants);
+
+        return response()->json([
+            'success' => true,
+            'conversation' => [
+                'id' => $conversation->id,
+                'name' => $conversation->name,
+                'avatar' => $conversation->avatar ? asset('storage/' . $conversation->avatar) : null,
+                'type' => 'group',
+            ]
         ]);
     }
 
-    // Save the message (even if it's just an attachment)
-    $message = Message::create([
-        'conversation_id' => $conversation->id,
-        'sender_id' => $authId,
-        'content' => $request->message ?? '',
-        'status' => 'sent',
-    ]);
+    public function addGroupMembers(Request $request)
+    {
+        $request->validate([
+            'conversation_id' => 'required|exists:conversations,id',
+            'members' => 'required|array|min:1',
+            'members.*' => 'exists:users,id',
+        ]);
 
-    // Handle attachments if any
-    if ($request->hasFile('attachments')) {
-        foreach ($request->file('attachments') as $file) {
-            $filePath = $file->store('attachments', 'public'); // Store in storage/app/public/attachments
+        $conversation = Conversation::find($request->conversation_id);
+        $authId = auth()->id();
 
-            $mime = $file->getMimeType();
-            $fileType = match (true) {
-                str_starts_with($mime, 'image/') => 'image',
-                str_starts_with($mime, 'video/') => 'video',
-                default => 'document',
-            };
-
-            Attachment::create([
-                'message_id' => $message->id,
-                'file_path' => $filePath,
-                'file_type' => $fileType,
-            ]);
+        // Verify user is admin of this group
+        if ($conversation->created_by !== $authId) {
+            abort(403, 'Only group admin can add members');
         }
+
+        // Get existing members to avoid duplicates
+        $existingMembers = $conversation->participants->pluck('user_id')->toArray();
+
+        // Add new participants
+        $participants = [];
+        foreach ($request->members as $memberId) {
+            if (!in_array($memberId, $existingMembers)) {
+                $participants[] = [
+                    'conversation_id' => $conversation->id,
+                    'user_id' => $memberId,
+                    'joined_at' => now(),
+                ];
+            }
+        }
+
+        if (!empty($participants)) {
+            ConversationParticipant::insert($participants);
+        }
+
+        return response()->json(['success' => true]);
     }
 
+    public function removeGroupMember(Request $request)
+    {
+        $request->validate([
+            'conversation_id' => 'required|exists:conversations,id',
+            'user_id' => 'required|exists:users,id',
+        ]);
+
+        $conversation = Conversation::find($request->conversation_id);
+        $authId = auth()->id();
+
+        // Verify user is admin or the user themselves
+        if ($conversation->created_by !== $authId && $request->user_id !== $authId) {
+            abort(403, 'Only group admin or the user themselves can remove members');
+        }
+
+        // Can't remove admin unless they're leaving themselves
+        if ($request->user_id === $conversation->created_by && $authId !== $conversation->created_by) {
+            abort(403, 'Cannot remove group admin');
+        }
+
+        // Remove participant
+        ConversationParticipant::where('conversation_id', $conversation->id)
+            ->where('user_id', $request->user_id)
+            ->delete();
+
+        return response()->json(['success' => true]);
+    }
+
+    public function updateGroup(Request $request)
+    {
+        $request->validate([
+            'conversation_id' => 'required|exists:conversations,id',
+            'name' => 'required|string|max:255',
+            'avatar' => 'nullable|image|max:2048',
+        ]);
+
+        $conversation = Conversation::find($request->conversation_id);
+        $authId = auth()->id();
+
+        // Verify user is admin of this group
+        if ($conversation->created_by !== $authId) {
+            abort(403, 'Only group admin can update group');
+        }
+
+        $updates = ['name' => $request->name];
+
+        // Handle avatar upload
+        if ($request->hasFile('avatar')) {
+            // Delete old avatar if exists
+            if ($conversation->avatar) {
+                Storage::disk('public')->delete($conversation->avatar);
+            }
+            
+            $path = $request->file('avatar')->store('group-avatars', 'public');
+            $updates['avatar'] = $path;
+        }
+
+        $conversation->update($updates);
+
+        return response()->json(['success' => true]);
+    }
+
+    public function leaveGroup(Request $request)
+    {
+        $request->validate([
+            'conversation_id' => 'required|exists:conversations,id',
+        ]);
+
+        $conversation = Conversation::find($request->conversation_id);
+        $authId = auth()->id();
+
+        // Verify user is part of this group
+        if (!$conversation->participants->contains('user_id', $authId)) {
+            abort(403, 'You are not a member of this group');
+        }
+
+        // If user is admin, assign new admin or delete group if last member
+        if ($conversation->created_by === $authId) {
+            $otherParticipants = $conversation->participants->where('user_id', '!=', $authId);
+            
+            if ($otherParticipants->count() > 0) {
+                // Assign admin to another participant
+                $newAdmin = $otherParticipants->first()->user_id;
+                $conversation->update(['created_by' => $newAdmin]);
+            } else {
+                // Last member - delete the group
+                $conversation->delete();
+                return response()->json(['success' => true, 'deleted' => true]);
+            }
+        }
+
+        // Remove participant
+        ConversationParticipant::where('conversation_id', $conversation->id)
+            ->where('user_id', $authId)
+            ->delete();
+
+        return response()->json(['success' => true, 'deleted' => false]);
+    }
+
+    private function getUnreadCount($conversationId, $userId)
+    {
+        return Message::where('conversation_id', $conversationId)
+            ->where('sender_id', '!=', $userId)
+            ->where('status', '!=', 'seen')
+            ->count();
+    }
+// app/Http/Controllers/ChatController.php
+public function getTypingStatus(Conversation $conversation)
+{
+    // Get users currently typing in this conversation
+    $typingUsers = Cache::get("conversation:{$conversation->id}:typing", []);
+    
+    // Filter out expired typing indicators (older than 3 seconds)
+    $validTypingUsers = array_filter($typingUsers, function($timestamp) {
+        return now()->timestamp - $timestamp < 3;
+    });
+    
+    // Get user details
+    $users = User::whereIn('id', array_keys($validTypingUsers))
+                ->get(['id', 'name', 'profile_photo_url']);
+    
     return response()->json([
-        'id' => $message->id,
-        'sender_id' => $message->sender_id,
-        'content' => $message->content,
-        'created_at' => $message->created_at,
-        'attachments' => $message->attachments ?? [],
+        'typing_users' => $users
     ]);
 }
-
-public function markAsSeen(User $user)
+public function setTypingStatus(Request $request)
 {
-    $authId = auth()->id();
-
-    $conversation = Conversation::where('type', 'personal')
-        ->whereHas('participants', fn($q) => $q->where('user_id', $authId))
-        ->whereHas('participants', fn($q) => $q->where('user_id', $user->id))
-        ->first();
-
-    if (!$conversation) {
-        return response()->json(['error' => 'Conversation not found'], 404);
+    $request->validate([
+        'conversation_id' => 'required|exists:conversations,id',
+        'user_id' => 'required|exists:users,id',
+        'typing' => 'required|boolean'
+    ]);
+    
+    $key = "conversation:{$request->conversation_id}:typing";
+    $typingUsers = Cache::get($key, []);
+    
+    if ($request->typing) {
+        $typingUsers[$request->user_id] = now()->timestamp;
+    } else {
+        unset($typingUsers[$request->user_id]);
     }
-
-    // Mark all messages from the other user as seen
-    Message::where('conversation_id', $conversation->id)
-        ->where('sender_id', '!=', $authId)
-        ->where('status', '!=', 'seen')
-        ->update(['status' => 'seen']);
-
+    
+    Cache::put($key, $typingUsers, now()->addMinutes(5));
+    
     return response()->json(['success' => true]);
 }
-public function getMessageStatuses(Request $request)
+public function showChatInterface(Conversation $conversation = null)
 {
-    $ids = $request->query('ids');
-    if (!$ids) return response()->json(['statuses' => []]);
+    $user = auth()->user();
+    
+    // Get all conversations for the user with last message and participants
+    $conversations = Conversation::with(['participants.user', 'lastMessage'])
+        ->whereHas('participants', function($query) use ($user) {
+            $query->where('user_id', $user->id);
+        })
+        ->orderByDesc(
+            Message::select('created_at')
+                ->whereColumn('messages.conversation_id', 'conversations.id')
+                ->latest()
+                ->take(1)
+        )
+        ->get()
+        ->map(function ($conversation) use ($user) {
+            $unreadCount = $this->getUnreadCount($conversation->id, $user->id);
+            
+            // For personal conversations, get the other participant
+            $otherParticipant = null;
+            if ($conversation->type === 'personal') {
+                $otherParticipant = $conversation->participants
+                    ->where('user_id', '!=', $user->id)
+                    ->first()
+                    ->user ?? null;
+            }
+            
+            return [
+                'id' => $conversation->id,
+                'type' => $conversation->type,
+                'name' => $conversation->name ?? ($otherParticipant ? $otherParticipant->full_name : 'Group Chat'),
+                'avatar' => $conversation->avatar ?? ($otherParticipant ? $otherParticipant->profile_photo_url : null),
+                'last_message' => $conversation->lastMessage ? [
+                    'content' => $conversation->lastMessage->content,
+                    'sender_name' => $conversation->lastMessage->sender->full_name,
+                    'created_at' => $conversation->lastMessage->created_at,
+                    'is_current_user' => $conversation->lastMessage->sender_id === $user->id,
+                ] : null,
+                'unread_count' => $unreadCount,
+                'participants' => $conversation->participants->map(function ($participant) {
+                    return [
+                        'id' => $participant->user_id,
+                        'name' => $participant->user->full_name,
+                        'avatar' => $participant->user->profile_photo_url,
+                        'is_online' => $participant->user->is_online,
+                    ];
+                }),
+                'created_at' => $conversation->created_at,
+            ];
+        });
 
-    $messageIds = explode(',', $ids);
-    $statuses = Message::whereIn('id', $messageIds)
-        ->where('sender_id', auth()->id())
-        ->get(['id', 'status']);
-
-    return response()->json([
-        'statuses' => $statuses
+    return Inertia::render('Chat/Index', [
+        'conversations' => $conversations,
+        'current_user' => [
+            'id' => $user->id,
+            'name' => $user->full_name,
+            'avatar' => $user->profile_photo_url,
+        ],
+        'initial_conversation' => $conversation ? [
+            'id' => $conversation->id,
+            'type' => $conversation->type,
+            'name' => $conversation->name ?? ($conversation->type === 'personal' ? 
+                $conversation->participants->where('user_id', '!=', $user->id)->first()->user->full_name : 
+                'Group Chat'),
+            'avatar' => $conversation->avatar ?? ($conversation->type === 'personal' ? 
+                $conversation->participants->where('user_id', '!=', $user->id)->first()->user->profile_photo_url : 
+                null),
+            'participants' => $conversation->participants->map(function ($participant) {
+                return [
+                    'id' => $participant->user_id,
+                    'name' => $participant->user->full_name,
+                    'avatar' => $participant->user->profile_photo_url,
+                    'is_online' => $participant->user->is_online,
+                ];
+            }),
+            'is_admin' => $conversation->created_by === $user->id,
+            'created_at' => $conversation->created_at,
+        ] : null,
     ]);
 }
-
 }
