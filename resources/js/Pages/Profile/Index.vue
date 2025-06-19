@@ -321,7 +321,7 @@ onMounted(() => {
       <div class="profile-picture-container">
         <div class="profile-picture-outline">
           <span class="online-status" :class="user.is_online ? 'online' : 'offline'" 
-                :title="user.is_online ? 'Online now' : 'Last seen 2h ago'"></span>
+                :title="user.is_online ? 'Online now' : 'Last seen ago'"></span>
           <div class="profile-picture">
           <img :src="user.profile_photo_url" :alt="user.full_name" @error="handleImageError">
           

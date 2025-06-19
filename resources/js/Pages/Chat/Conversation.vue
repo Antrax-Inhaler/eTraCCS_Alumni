@@ -54,7 +54,21 @@
       <div v-if="loadingMessages" class="loading-messages">
         <i class="fas fa-spinner fa-spin"></i> Loading messages...
       </div>
-      
+       <template v-if="!loadingMessages && messages.length === 0">
+    <div class="empty-conversation">
+      <div class="empty-icon">
+        <i class="fas fa-comments"></i>
+      </div>
+      <h4 v-if="conversation.type === 'personal'">
+        Start your conversation with {{ conversation.name }}
+      </h4>
+      <h4 v-else>
+        Welcome to {{ conversation.name }}
+      </h4>
+      <p>Send your first message to begin chatting</p>
+    </div>
+  </template>
+    <template v-else>
       <div v-for="message in messages" :key="message.id" 
            :class="['message', message.is_current_user ? 'outgoing' : 'incoming']">
         <div v-if="!message.is_current_user" class="message-avatar">
@@ -107,6 +121,7 @@
           </div>
         </div>
       </div>
+      </template>
     </div>
     
     <!-- Typing Indicator -->
@@ -298,65 +313,69 @@ function formatTime(date) {
 }
 
 const getOtherParticipant = computed(() => {
-  if (!getConversationId.value || props.conversation?.type !== 'personal') return null;
+  if (!props.conversation || props.conversation?.type !== 'personal') return null;
   const participant = props.conversation.participants?.find(p => p.id !== props.currentUser?.id);
   return participant ?? null;
 });
-
 async function fetchMessages() {
-  if (!getConversationId.value) {
+  if (!props.conversation?.id) {
     console.error('No conversation ID available');
     return;
   }
 
   try {
     loadingMessages.value = true;
+    messages.value = []; // Clear existing messages
     
-    // Determine the correct endpoint based on conversation type
-    const endpoint = props.conversation.type === 'personal' 
-      ? route('chat.messages', { user: getOtherParticipant.value?.id ?? 0 })
-      : route('chat.conversation-messages', { conversation: getConversationId.value });
+    const endpoint = route('chat.conversation-messages', { conversation: props.conversation.id });
+    const response = await axios.get(endpoint);
     
-    // Only add last_id param if we have one
-    const params = lastMessageId.value ? { params: { last_id: lastMessageId.value } } : {};
-    
-    const response = await axios.get(endpoint, params);
-    
-    const newMessages = response.data.messages || [];
-    if (newMessages.length) {
-      const existingIds = new Set(messages.value.map(m => m.id));
-      const filteredMessages = newMessages.filter(msg => !existingIds.has(msg.id));
-      
-      if (filteredMessages.length > 0) {
-        // Add new messages to the beginning (for infinite scroll)
-        messages.value.unshift(...filteredMessages.reverse());
-        lastMessageId.value = filteredMessages[0].id;
-        
-        // Scroll to bottom only if we're loading initial messages
-        if (!lastMessageId.value) {
-          scrollToBottom();
-        }
-      }
+    if (response.data.messages && response.data.messages.length > 0) {
+      messages.value = response.data.messages.reverse();
+      lastMessageId.value = messages.value[0]?.id;
+      scrollToBottom();
+    } else {
+      // No messages yet - show empty state
+      messages.value = [];
+      // You can add a placeholder message here if you want
+      // Example: messages.value.push(createWelcomeMessage());
     }
   } catch (error) {
     console.error('Error fetching messages:', error);
-    // You might want to show an error message to the user here
+    // Show error state to user
   } finally {
     loadingMessages.value = false;
   }
 }
+
+// Optional: Create a welcome message for empty conversations
+function createWelcomeMessage() {
+  return {
+    id: 'welcome-' + Date.now(),
+    content: props.conversation.type === 'personal' 
+      ? `Start your conversation with ${props.conversation.name}`
+      : `Welcome to the ${props.conversation.name} group chat!`,
+    created_at: new Date().toISOString(),
+    is_system: true,
+    sender_name: 'System',
+    sender_profile_photo_url: '/images/system-message.png'
+  };
+}
 async function checkForNewMessages() {
-  if (!getConversationId.value) return;
+  if (!props.conversation?.id) return;
   
   try {
-    const endpoint = props.conversation.type === 'personal' 
-      ? route('chat.messages', { user: getOtherParticipant.value?.id })
-      : route('chat.conversation-messages', { conversation: props.conversation.id });
+    const endpoint = route('chat.conversation-messages', { 
+      conversation: props.conversation.id 
+    });
     
-    const params = { last_id: messages.value[messages.value.length - 1]?.id || 0 };
-    const response = await axios.get(endpoint, { params }); // wrap in { params }
-
+    const params = {
+      last_id: messages.value[messages.value.length - 1]?.id || 0
+    };
+    
+    const response = await axios.get(endpoint, { params });
     const newMessages = response.data.messages || [];
+    
     if (newMessages.length) {
       const existingIds = new Set(messages.value.map(m => m.id));
       const filteredMessages = newMessages.filter(msg => !existingIds.has(msg.id));
@@ -372,6 +391,7 @@ async function checkForNewMessages() {
     }
   } catch (error) {
     console.error('Error checking for new messages:', error);
+    // Optional: Implement retry logic or show error notification
   }
 }
 
@@ -422,52 +442,63 @@ function openAttachment(url) {
 }
 
 async function sendMessage() {
-  if (!canSend.value) return;
+  if (!canSend.value || !props.conversation?.id) return;
 
   const formData = new FormData();
-  if (newMessage.value) {
-    formData.append('message', newMessage.value);
+  if (newMessage.value.trim()) {
+    formData.append('message', newMessage.value.trim());
   }
 
-  attachments.value.forEach((file, i) => {
-    formData.append(`attachments[${i}]`, file);
+  // Add attachments if any
+  attachments.value.forEach((file, index) => {
+    formData.append(`attachments[${index}]`, file);
   });
 
   try {
-    const endpoint = props.conversation.type === 'personal'
-      ? route('chat.send', { user: getOtherParticipant.value?.id })
-      : route('chat.conversation.send', { conversation: props.conversation.id });
-
-    const response = await axios.post(endpoint, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
+    // Always use the conversation endpoint
+    const response = await axios.post(
+      route('chat.conversation.send', { conversation: props.conversation.id }),
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
       }
-    });
+    );
 
-    const processedAttachments = response.data.attachments || [];
+    // Process the response
+    const processedAttachments = response.data.attachments?.map(attachment => ({
+      id: attachment.id,
+      file_path: attachment.file_path,
+      file_type: attachment.file_type
+    })) || [];
 
-    // Use fallback if currentUser is undefined
-    const senderName = props.currentUser?.name || 'You';
-    const senderPhoto = props.currentUser?.profile_photo_url || '/default.png';
-
-    messages.value.push({
-      ...response.data,
-      attachments: processedAttachments,
+    // Add the new message to the messages array
+    const newMsg = {
+      id: response.data.id,
+      sender_id: props.currentUser.id,
       is_current_user: true,
+      content: response.data.content,
+      created_at: response.data.created_at,
       status: response.data.status || 'sent',
-      sender_name: senderName,
-      sender_profile_photo_url: senderPhoto,
-    });
+      attachments: processedAttachments,
+      sender_name: props.currentUser.name,
+      sender_profile_photo_url: props.currentUser.profile_photo_url
+    };
 
-    // Reset input and attachments
+    messages.value.push(newMsg);
+    scrollToBottom();
+
+    // Reset input fields
     newMessage.value = '';
     attachments.value = [];
-    if (fileInput.value) fileInput.value.value = '';
-
-    scrollToBottom();
+    if (fileInput.value) {
+      fileInput.value.value = '';
+    }
 
   } catch (error) {
     console.error('Error sending message:', error);
+    // Show error to user
   }
 }
 
@@ -999,5 +1030,24 @@ watch(() => messagesContainer.value, (container) => {
   .message-content {
     max-width: 85%;
   }
+}
+.empty-conversation {
+  text-align: center;
+  padding: 2rem;
+  color: #666;
+}
+
+.empty-conversation .empty-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  color: #ccc;
+}
+
+.empty-conversation h4 {
+  margin-bottom: 0.5rem;
+}
+
+.empty-conversation p {
+  color: #999;
 }
 </style>

@@ -4,9 +4,9 @@
     <div class="chat-sidebar">
       <div class="sidebar-header">
         <h2>Messages</h2>
-        <button @click="showNewChatModal = true" class="new-chat-button">
-          <i class="fas fa-plus"></i> New Chat
-        </button>
+<button @click="openNewChatModal" class="new-chat-button">
+  <i class="fas fa-plus"></i> New Chat
+</button>
       </div>
       
       <div class="search-container">
@@ -213,6 +213,7 @@
   @start-chat="startNewChat"
 />
 
+
 <GroupInfoModal 
   v-if="showGroupInfo && activeConversation" 
   :conversation="activeConversation"
@@ -250,6 +251,11 @@
       :src="selectedAttachment"
       @close="selectedAttachment = null"
     />
+    <template>
+  <div style="color: red; font-size: 2rem;">
+    TEST COMPONENT VISIBILITY
+  </div>
+</template>
   </div>
 </template>
 
@@ -311,6 +317,10 @@ const filteredConversations = computed(() => {
 const canSend = computed(() => {
   return newMessage.value.trim().length > 0 || attachments.value.length > 0;
 });
+function openNewChatModal() {
+  console.log('Opening new chat modal'); // Debug
+  showNewChatModal.value = true;
+}
 
 // Methods
 function selectConversation(conversation) {
@@ -413,6 +423,14 @@ function isImage(filePath) {
 function isVideo(filePath) {
     return /\.(mp4|webm|ogg)$/i.test(filePath);
 }
+async function testChatStart() {
+  try {
+    const response = await axios.post(route('chat.start', { user: 1 })); // Use a real user ID
+    console.log('Response:', response.data);
+  } catch (error) {
+    console.error('Error testing endpoint:', error.response);
+  }
+}
 async function markAsSeen() {
   if (!activeConversation.value) return;
   
@@ -454,7 +472,7 @@ function getFileIcon(filePath) {
     }
 }
 async function sendMessage() {
-  if (!canSend.value || !activeConversation.value) return;
+  if (!canSend.value) return;
 
   const formData = new FormData();
   if (newMessage.value.trim()) {
@@ -467,15 +485,35 @@ async function sendMessage() {
   });
 
   try {
-    const endpoint = activeConversation.value.type === 'personal'
-      ? route('chat.send', { user: getOtherParticipant().id })
-      : route('chat.conversation.send', { conversation: activeConversation.value.id });
+    let endpoint;
+    let params = {};
+
+    // Always use conversation endpoint if we have a conversation ID
+    if (props.conversation?.id) {
+      endpoint = route('chat.conversation.send', { conversation: props.conversation.id });
+    } else if (props.conversation?.type === 'personal' && getOtherParticipant.value?.id) {
+      // For new personal conversations, use the user endpoint
+      endpoint = route('chat.send', { user: getOtherParticipant.value.id });
+    } else {
+      throw new Error('No valid conversation or participant specified');
+    }
 
     const response = await axios.post(endpoint, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
     });
+
+    // If this was a new conversation, update the conversation ID
+    if (response.data.conversation_id && !props.conversation?.id) {
+      // Update the active conversation in your state management
+      // This depends on how you're managing state - here's a basic example:
+      activeConversation.value = {
+        id: response.data.conversation_id,
+        type: 'personal',
+        name: getOtherParticipant.value?.name || ''
+      };
+    }
 
     // Process the response
     const processedAttachments = response.data.attachments?.map(attachment => ({
@@ -487,85 +525,65 @@ async function sendMessage() {
     // Add the new message to the messages array
     const newMsg = {
       id: response.data.id,
-      sender_id: props.current_user.id,
+      conversation_id: response.data.conversation_id || props.conversation?.id,
+      sender_id: props.currentUser.id,
       is_current_user: true,
       content: response.data.content,
       created_at: response.data.created_at,
       status: response.data.status || 'sent',
       attachments: processedAttachments,
-      sender_name: props.current_user.name,
-      sender_profile_photo_url: props.current_user.avatar
+      sender_name: props.currentUser.name,
+      sender_profile_photo_url: props.currentUser.profile_photo_url
     };
 
     messages.value.push(newMsg);
-    lastMessageId.value = newMsg.id; // Update the last message ID
+    lastMessageId.value = newMsg.id;
 
     // Reset input fields
     newMessage.value = '';
     attachments.value = [];
     if (fileInput.value) {
-      fileInput.value.value = ''; // Reset file input
+      fileInput.value.value = '';
     }
 
-    // Close emoji picker if open
-    showEmojiPicker.value = false;
-
-    // Scroll to bottom to show the new message
     scrollToBottom();
-
-    // Update the last message in the conversation list
-    const conversation = props.conversations.find(c => c.id === activeConversation.value.id);
-    if (conversation) {
-      conversation.last_message = {
-        content: newMsg.content,
-        created_at: newMsg.created_at,
-        is_current_user: true
-      };
-    }
 
   } catch (error) {
     console.error('Error sending message:', error);
-    // You might want to add user feedback here, like a toast notification
+    // Show error to user
+    alert('Failed to send message: ' + error.message);
   }
 }
 async function startNewChat(user) {
+  console.log('Starting chat with user:', user);
   showNewChatModal.value = false;
   
   try {
-    // Start a new chat with the selected user
     const response = await axios.post(route('chat.start', { user: user.id }));
-    
-    // Find or create the conversation in the local list
-    let conversation = props.conversations.find(c => 
-      c.type === 'personal' && 
-      c.participants.some(p => p.id === user.id)
-    );
-    
-    if (!conversation) {
-      conversation = {
-        id: response.data.conversation_id,
-        type: 'personal',
-        name: user.name,
-        avatar: user.avatar,
-        participants: [
-          { id: props.current_user.id, name: props.current_user.name },
-          { id: user.id, name: user.name }
-        ],
-        last_message: null,
-        unread_count: 0,
-        created_at: new Date().toISOString()
-      };
-      
-      // Add the new conversation to the beginning of the list
-      props.conversations.unshift(conversation);
-    }
-    
-    // Select the new conversation
-    selectConversation(conversation);
+    console.log('API Response:', response.data);
+
+    const newConversation = {
+      id: response.data.conversation_id,
+      type: 'personal',
+      name: user.name,
+      avatar: user.avatar,
+      participants: [
+        { id: props.current_user.id, name: props.current_user.name },
+        { id: user.id, name: user.name }
+      ],
+      last_message: null,
+      unread_count: 0,
+      created_at: new Date().toISOString()
+    };
+
+    console.log('New conversation:', newConversation);
+    selectConversation(newConversation);
     
   } catch (error) {
-    console.error('Error starting new chat:', error);
-    // You might want to show an error message to the user
+    console.error('Chat creation failed:', {
+      error: error.response?.data || error.message,
+      config: error.config
+    });
   }
 }
 function getFileName(filePath) {
@@ -648,17 +666,23 @@ async function handleTyping() {
 
 // Lifecycle hooks
 onMounted(() => {
-  // Check if there's a conversation ID in the URL
-  const conversationId = route().params.conversation;
+  console.log('Mounted with props:', {
+    conversations: props.conversations,
+    current_user: props.current_user
+  });
   
+  const conversationId = route().params.conversation;
+  console.log('Initial conversation ID:', conversationId);
+
+  // Select first conversation if none specified
   if (conversationId) {
     const conversation = props.conversations.find(c => c.id == conversationId);
-    if (conversation) {
-      selectConversation(conversation);
-    }
+    if (conversation) selectConversation(conversation);
+  } else if (props.conversations.length > 0) {
+    // Auto-select first conversation if none specified
+    selectConversation(props.conversations[0]);
   }
   
-  // Start polling for new messages (every 3 seconds)
   pollingInterval.value = setInterval(checkForNewMessages, 3000);
 });
 onBeforeUnmount(() => {

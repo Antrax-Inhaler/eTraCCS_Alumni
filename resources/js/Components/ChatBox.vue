@@ -331,9 +331,13 @@ async function sendMessage() {
 }
 
 function goToFullChat() {
-    window.open(route('chat.start', props.user.id), '_blank');
+    if (props.conversation?.id) {
+        window.open(route('chat.conversation', props.conversation.id), '_blank');
+    } else if (props.user?.id) {
+        // Fallback for personal chats if conversation ID isn't available
+        window.open(route('chat.start', props.user.id), '_blank');
+    }
 }
-
 // async function markAsSeen() {
 //     try {
 //         await axios.post(route('chat.markAsSeen', props.user.id));

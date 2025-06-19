@@ -79,78 +79,82 @@ class ChatController extends Controller
         ]);
     }
 
-    public function start(User $user)
-    {
-        $authUser = auth()->user();
-        
-        // Find or create conversation
-        $conversation = Conversation::where('type', 'personal')
-            ->whereHas('participants', fn($q) => $q->where('user_id', $authUser->id))
-            ->whereHas('participants', fn($q) => $q->where('user_id', $user->id))
-            ->first();
-
-        if (!$conversation) {
-            $conversation = Conversation::create([
-                'type' => 'personal',
-                'created_by' => $authUser->id,
-            ]);
-
-            ConversationParticipant::insert([
-                ['conversation_id' => $conversation->id, 'user_id' => $authUser->id, 'joined_at' => now()],
-                ['conversation_id' => $conversation->id, 'user_id' => $user->id, 'joined_at' => now()],
-            ]);
-        }
-
-        return redirect()->route('chat.conversation', $conversation);
+public function start(User $user)
+{
+    $authUser = auth()->user();
+    
+    if ($authUser->id === $user->id) {
+        abort(403, "You can't start a chat with yourself");
     }
 
-    public function showConversation(Conversation $conversation)
-    {
-        $user = auth()->user();
-        
-        // Verify user is part of this conversation
-        if (!$conversation->participants->contains('user_id', $user->id)) {
-            abort(403);
-        }
+    // Find existing conversation
+    $conversation = Conversation::where('type', 'personal')
+        ->whereHas('participants', fn($q) => $q->where('user_id', $authUser->id))
+        ->whereHas('participants', fn($q) => $q->where('user_id', $user->id))
+        ->first();
 
-        // Mark messages as seen
-        $this->markConversationAsSeen($conversation);
+    if (!$conversation) {
+        $conversation = Conversation::create([
+            'type' => 'personal',
+            'created_by' => $authUser->id,
+        ]);
 
-        $conversation->load(['participants.user']);
-
-        // For personal conversations, get the other participant
-        $otherParticipant = null;
-        if ($conversation->type === 'personal') {
-            $otherParticipant = $conversation->participants
-                ->where('user_id', '!=', $user->id)
-                ->first()
-                ->user ?? null;
-        }
-
-        return Inertia::render('Chat/Conversation', [
-            'conversation' => [
-                'id' => $conversation->id,
-                'type' => $conversation->type,
-                'name' => $conversation->name ?? ($otherParticipant ? $otherParticipant->full_name : 'Group Chat'),
-                'avatar' => $conversation->avatar ?? ($otherParticipant ? $otherParticipant->profile_photo_url : null),
-                'participants' => $conversation->participants->map(function ($participant) {
-                    return [
-                        'id' => $participant->user_id,
-                        'name' => $participant->user->full_name,
-                        'avatar' => $participant->user->profile_photo_url,
-                        'is_online' => $participant->user->is_online,
-                    ];
-                }),
-                'is_admin' => $conversation->created_by === $user->id,
-                'created_at' => $conversation->created_at,
-            ],
-            'current_user' => [
-                'id' => $user->id,
-                'name' => $user->full_name,
-                'avatar' => $user->profile_photo_url,
-            ],
+        $conversation->participants()->createMany([
+            ['user_id' => $authUser->id, 'joined_at' => now()],
+            ['user_id' => $user->id, 'joined_at' => now()],
         ]);
     }
+
+    return redirect()->route('chat.conversation', $conversation);
+}
+
+public function showConversation(Conversation $conversation)
+{
+    $user = auth()->user();
+    
+    // Verify user is part of this conversation
+    if (!$conversation->participants->contains('user_id', $user->id)) {
+        abort(403);
+    }
+
+    // Mark messages as seen
+    $this->markConversationAsSeen($conversation);
+
+    $conversation->load(['participants.user']);
+
+    // For personal conversations, get the other participant
+    $otherParticipant = null;
+    if ($conversation->type === 'personal') {
+        $otherParticipant = $conversation->participants
+            ->where('user_id', '!=', $user->id)
+            ->first()
+            ->user ?? null;
+    }
+
+    return Inertia::render('Chat/Conversation', [
+        'conversation' => [
+            'id' => $conversation->id,
+            'type' => $conversation->type,
+            'name' => $conversation->name ?? ($otherParticipant ? $otherParticipant->full_name : 'Group Chat'),
+            'avatar' => $conversation->avatar ?? ($otherParticipant ? $otherParticipant->profile_photo_url : null),
+            'participants' => $conversation->participants->map(function ($participant) {
+                return [
+                    'id' => $participant->user_id,
+                    'name' => $participant->user->full_name,
+                    'avatar' => $participant->user->profile_photo_url,
+                    'is_online' => $participant->user->is_online,
+                ];
+            }),
+            'is_admin' => $conversation->created_by === $user->id,
+            'created_at' => $conversation->created_at,
+        ],
+        'current_user' => [
+            'id' => $user->id,
+            'name' => $user->full_name,
+            'avatar' => $user->profile_photo_url,
+        ],
+    ]);
+}
 
     public function fetchMessages(User $user)
     {
