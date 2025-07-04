@@ -23,6 +23,10 @@ use App\Models\EmploymentHistory;
 use App\Models\JobHuntingExperience;
 use App\Models\BsitProgramSuggestion;
 use App\Models\UnemployedDetail;
+use App\Http\Requests\StoreOrUpdateContentRequest;
+use App\Http\Requests\StoreJobHuntingRequest;
+use App\Http\Requests\StoreProgramSuggestionRequest;
+use App\Http\Requests\StoreUnemploymentDetailRequest;
 class JobPostingController extends Controller
 {
     public function index(Request $request)
@@ -180,19 +184,21 @@ protected function checkProgramSuggestions(User $user): bool
                     'message' => 'User must be authenticated to access this resource.',
                 ], 401);
             }
-    
+    $completeness = $this->checkProfileCompleteness($user);
             // ✅ Step 2: Fetch all users with minimal info & is_online status
-            $users = User::select('id', 'first_name', 'last_name', 'profile_photo_path', 'last_seen_at')
-                ->orderBy('last_name')
-                ->get()
-                ->map(function ($u) {
-                    return [
-                        'id' => $u->id,
-                        'full_name' => trim("{$u->first_name} {$u->last_name}"),
-                        'profile_photo_url' => $u->profile_photo_url,
-                        'is_online' => $u->last_seen_at && $u->last_seen_at->gt(now()->subMinutes(2)),
-                    ];
-                });
+            // In your controller
+$users = User::select('id', 'first_name', 'last_name', 'profile_photo_path', 'last_seen_at')
+    ->get()
+    ->map(function ($u) {
+        return [
+            'id' => $u->id,
+            'encrypted_id' => Crypt::encryptString($u->id),
+            'full_name' => trim("{$u->first_name} {$u->last_name}"),
+            'profile_photo_url' => $u->profile_photo_url,
+            'is_online' => $u->last_seen_at && $u->last_seen_at->gt(now()->subMinutes(2)),
+        ];
+    })
+    ->sortByDesc('is_online'); // This will put online users first
     
             // ✅ Step 3: Get user's view history for recommendations
             $viewedEntities = UserViewHistory::where('user_id', $user->id)
@@ -203,7 +209,7 @@ protected function checkProgramSuggestions(User $user): bool
                 });
     
             // ✅ Step 4: Fetch paginated content items with eager loading
-            $perPage = 30;
+            $perPage = 40;
             $query = ContentItem::with(['mediaFiles', 'reactions', 'comments.user', 'creator']);
             $paginatedItems = $query->paginate($perPage);
     
@@ -212,7 +218,7 @@ protected function checkProgramSuggestions(User $user): bool
             $paginatedItems->setCollection($entities);
     
             // ✅ Step 6: Return Inertia response with data
-            return inertia('Dashboard', [
+            return inertia('JobPosting/Index', [
                 'current_user' => $this->getCurrentUserData($user),  // You can also inline this if preferred
                 'entities' => $paginatedItems->items(),
                 'pagination' => [
@@ -224,6 +230,9 @@ protected function checkProgramSuggestions(User $user): bool
                 ],
                 'userList' => $users,
                 'recommendedUsers' => $this->recommendUsersTo($user),
+                'auth_user_id' => $user->id,
+                'encrypted_id' => Crypt::encryptString($user->id),
+            ...$completeness, // Spread the completeness array
             ]);
     
         } catch (\Exception $e) {
@@ -653,80 +662,49 @@ private function recommendUsersTo($user)
     return $sortedReshownEntities;
 }
 
-public function storeContentItem(Request $request)
+public function storeContentItem(StoreOrUpdateContentRequest $request)
 {
- $tags = [];
-    
-    // Handle tags input
-if ($request->has('tags')) {
-    $tagsInput = $request->input('tags');
+    // Normalize and clean tags input
+    $tags = [];
+    if ($request->has('tags')) {
+        $tagsInput = $request->input('tags');
 
-    if (is_string($tagsInput) && $tagsInput !== '') {
-        $decoded = json_decode($tagsInput, true);
-        $tags = is_array($decoded) ? $decoded : [];
-    } elseif (is_array($tagsInput)) {
-        $tags = $tagsInput;
+        if (is_string($tagsInput) && $tagsInput !== '') {
+            $decoded = json_decode($tagsInput, true);
+            $tags = is_array($decoded) ? $decoded : [];
+        } elseif (is_array($tagsInput)) {
+            $tags = $tagsInput;
+        }
+
+        $tags = array_filter($tags, fn($tag) => !empty(trim($tag)));
     }
 
-    // Optional: clean tags
-    $tags = array_filter($tags, fn($tag) => !empty(trim($tag)));
-}
-
-
-    // Validate common fields
-    $request->validate([
-        'type' => 'required|in:event,post,job_posting',
-        'title' => 'nullable|string|max:255',
-        'body' => 'nullable|string',
-        'tags' => 'nullable',
-        'event_name' => 'nullable|string|max:255|required_if:type,event',
-        'date' => 'nullable|date|required_if:type,event',
-        'latitude' => 'nullable|numeric|between:-90,90|required_if:type,event|required_if:type,job_posting',
-        'longitude' => 'nullable|numeric|between:-180,180|required_if:type,event|required_if:type,job_posting',
-        'company_name' => 'nullable|string|max:255|required_if:type,job_posting',
-        'job_title' => 'nullable|string|max:255|required_if:type,job_posting',
-        'description' => 'nullable|string|required_if:type,job_posting',
-        'media_files' => 'nullable|array',
-        'media_files.*' => 'file|mimes:jpg,jpeg,png,pdf,mp4,mov,avi|max:10240',
-        'organizer_name' => 'nullable|string|max:255|required_if:type,event',
-        'registration_link' => 'nullable|url|required_if:type,event',
-        // 'salary_range' => 'nullable|string|max:100|required_if:type,job_posting',
-        'application_deadline' => 'nullable|date|required_if:type,job_posting',
-        'is_remote' => 'nullable|boolean',
-        'privacy_setting' => 'required|in:public,private,batchmates,campus_only',
-    ]);
-
     // Extract validated data
-    $data = $request->only([
-        'type', 'title', 'body', 'event_name', 'date', 'latitude', 'longitude','city', 'country',
-        'company_name', 'job_title', 'description',
-        'organizer_name', 'registration_link', 'salary_range', 
-        'application_deadline', 'tags', 'is_remote', 'privacy_setting'
-    ]);
+    $data = $request->validated();
+
+    // Replace raw 'tags' with cleaned/parsed version
     $data['tags'] = $tags;
-    
-    // Debug: Check what will be saved
-    \Log::info('Tags before save:', ['tags' => $data['tags']]);
+
     // Add the authenticated user's ID
     $data['user_id'] = auth()->id();
-    // Get location details from OpenWeatherMap if coordinates are provided
-    if ($request->has(['latitude', 'longitude'])) {
+
+    // Get location info if coordinates are present
+    if ($request->filled(['latitude', 'longitude'])) {
         try {
             $apiKey = "2f745fa85d563da5adb87b6cd4b81caf";
             $latitude = $request->latitude;
             $longitude = $request->longitude;
-            
+
             $client = new \GuzzleHttp\Client();
             $response = $client->get("https://api.openweathermap.org/data/2.5/weather?lat={$latitude}&lon={$longitude}&appid={$apiKey}");
-            
+
             $weatherData = json_decode($response->getBody(), true);
-            
+
             if (isset($weatherData['name']) && isset($weatherData['sys']['country'])) {
                 $data['city'] = $weatherData['name'];
                 $data['country'] = $weatherData['sys']['country'];
             }
         } catch (\Exception $e) {
-            // Log error but don't fail the request
             \Log::error("Failed to fetch location data: " . $e->getMessage());
         }
     }
@@ -745,9 +723,11 @@ if ($request->has('tags')) {
         }
     }
 
-    return redirect()->back()->with('success', ucfirst($contentItem->type) . ' created successfully!');
-}
-public function addOrUpdateReaction(Request $request)
+    return response()->json([
+        'message' => ucfirst($contentItem->type) . ' created successfully!',
+        'contentItem' => $contentItem
+    ], 201);
+}public function addOrUpdateReaction(Request $request)
 {
     try {
         $validated = $request->validate([
@@ -962,28 +942,19 @@ public function getRecentStories()
     }
 }
 // JobHuntingController.php
-public function storeJobHunting(Request $request)
-{
-     $validated = $request->validate([
-        'time_to_first_job' => 'required|in:less_than_1_month,1_to_3_months,4_to_6_months,7_to_12_months,more_than_1_year,never_employed',
-        'difficulties' => 'sometimes|string',
-        'other_difficulty' => 'nullable|string|max:255',
-        'job_source' => 'required|in:online_portals,walk_in,referral,university_fair,social_media,government,other',
-        'other_source' => 'nullable|required_if:job_source,other|string|max:255',
-        'starting_salary' => 'nullable|in:below_10k,10k_15k,15k_20k,20k_30k,above_30k'
-    ]);
 
+public function storeJobHunting(StoreJobHuntingRequest $request)
+{
     try {
         $jobHunting = JobHuntingExperience::updateOrCreate(
             ['user_id' => auth()->id()],
-            $validated
+            $request->validated()
         );
 
         return redirect()->back()->with([
             'success' => 'Job hunting experience saved successfully',
             'jobHuntingData' => $jobHunting
         ]);
-
     } catch (\Exception $e) {
         return redirect()->back()->withErrors([
             'error' => 'Error saving job hunting experience: ' . $e->getMessage()
@@ -992,21 +963,15 @@ public function storeJobHunting(Request $request)
 }
 
 // ProgramSuggestionController.php
-public function storeProgramSuggestion(Request $request)
+public function storeProgramSuggestion(StoreProgramSuggestionRequest $request)
 {
- $validated = $request->validate([
-        'suggestion_type' => 'required|in:industry_aligned_subjects,hands_on_projects,updated_tools,stronger_internship,cert_prep,career_services,other',
-        'description' => 'required|string|min:20|max:1000',
-    ]);
-
     try {
-        $suggestion = auth()->user()->programSuggestions()->create($validated);
+        $suggestion = auth()->user()->programSuggestions()->create($request->validated());
 
         return redirect()->back()->with([
             'success' => 'Program suggestion submitted successfully',
             'suggestion' => $suggestion
         ]);
-
     } catch (\Exception $e) {
         return redirect()->back()->withErrors([
             'error' => 'Error submitting program suggestion: ' . $e->getMessage()
@@ -1014,21 +979,15 @@ public function storeProgramSuggestion(Request $request)
     }
 }
 // UnemploymentDetailController.php
-public function storeUnemploymentDetail(Request $request)
+public function storeUnemploymentDetail(StoreUnemploymentDetailRequest $request)
 {
-    $validated = $request->validate([
-        'unemployment_reasons' => 'required|array',
-        'unemployment_reasons.*' => 'string|in:seeking,studying,family_responsibilities,health_issues,not_interested,other',
-        'other_unemployment_reason' => 'nullable|required_if:unemployment_reasons,other|string|max:255',
-        'has_awards' => 'required|boolean',
-        'awards_details' => 'nullable|required_if:has_awards,true|string|max:1000'
-    ]);
-
     try {
+        $validated = $request->validated();
+
         $unemployment = UnemployedDetail::updateOrCreate(
             ['user_id' => auth()->id()],
             [
-                'unemployment_reasons' => $validated['unemployment_reasons'], // Let the mutator handle conversion
+                'unemployment_reasons' => $validated['unemployment_reasons'],
                 'other_unemployment_reason' => $validated['other_unemployment_reason'] ?? null,
                 'has_awards' => $validated['has_awards'],
                 'awards_details' => $validated['awards_details'] ?? null

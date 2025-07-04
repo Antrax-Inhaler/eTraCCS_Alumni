@@ -4,47 +4,41 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Comment;
 use Illuminate\Support\Facades\Auth;
+use App\Http\Requests\StoreCommentRequest;
 
 class CommentController extends Controller
 {
     // Add a new comment
-    public function store(Request $request)
-    {
-        $request->validate([
-            'content' => 'required|string',
-            'parent_id' => 'nullable|exists:comments,id',
-            'post_id' => 'nullable|exists:posts,id',
-            'event_id' => 'nullable|exists:events,id',
-            'job_id' => 'nullable|exists:job_postings,id',
-        ]);
-    
-        // Ensure only one entity is provided
-        $entityTypes = array_filter([
-            'post_id' => $request->post_id,
-            'event_id' => $request->event_id,
-            'job_id' => $request->job_id,
-        ]);
-    
-        if (count($entityTypes) !== 1) {
-            return response()->json(['error' => 'Invalid request. You must provide exactly one entity ID.'], 400);
-        }
-    
-        $userId = Auth::id();
-        $comment = Comment::create([
-            'user_id' => $userId,
-            'content' => $request->content,
-            'parent_id' => $request->parent_id,
-            key($entityTypes) => current($entityTypes),
-        ]);
-    
-        // Load the user relationship before returning the comment
-        $comment->load('user');
-    
-        return response()->json([
-            'message' => 'Comment added successfully.',
-            'comment' => $comment,
-        ]);
+
+public function store(StoreCommentRequest $request)
+{
+    // Ensure only one entity ID is provided
+    $entityTypes = array_filter([
+        'post_id' => $request->post_id,
+        'event_id' => $request->event_id,
+        'job_id' => $request->job_id,
+    ]);
+
+    if (count($entityTypes) !== 1) {
+        return response()->json(['error' => 'Invalid request. You must provide exactly one entity ID.'], 400);
     }
+
+    $userId = auth()->id();
+    $comment = Comment::create([
+        'user_id' => $userId,
+        'content' => $request->content,
+        'parent_id' => $request->parent_id,
+        key($entityTypes) => current($entityTypes),
+    ]);
+
+    $comment->load('user');
+
+    return response()->json([
+        'message' => 'Comment added successfully.',
+        'comment' => $comment,
+    ]);
+}
+
 
     // Fetch all comments for an entity
     public function index(Request $request)

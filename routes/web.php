@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\GeneralSettingsController;
 use App\Http\Middleware\UpdateUserLastSeen;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\ResumeController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\JobPostingController;
 use App\Http\Controllers\CommentController;
@@ -448,3 +449,5 @@ Route::prefix('admin/alumni')->middleware(['auth:admin'])->group(function () {
     Route::get('/match-details/{user}', [VerificationController::class, 'matchDetails'])
     ->name('admin.alumni.match-details');
 });
+Route::get('/resume', [ResumeController::class, 'index']);
+Route::get('/resume/download', [ResumeController::class, 'downloadPdf'])->name('resume.download');
