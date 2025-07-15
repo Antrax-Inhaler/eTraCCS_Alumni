@@ -3,7 +3,7 @@ import { Head, Link, useForm } from '@inertiajs/vue3';
 import AuthenticationCardLogo from '@/Components/AuthenticationCardLogo.vue';
 import InputError from '@/Components/InputError.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
-
+import OfflineAlert from '@/Components/OfflineAlert.vue';
 defineProps({
     canResetPassword: Boolean,
     status: String,
@@ -26,6 +26,9 @@ const submit = () => {
 </script>
 
 <template>
+      <OfflineAlert />
+  <router-view />
+
     <Head title="Log in" />
 <div class="container">
 

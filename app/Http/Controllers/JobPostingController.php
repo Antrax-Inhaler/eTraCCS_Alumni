@@ -484,55 +484,70 @@ public function toggleReaction(Request $request)
 }
 private function calculateScore($entity, $user)
 {
+    // Skip self-scoring if this is the user's own content
+    if ($entity->creator_id === $user->id) {
+        return 0; // Or a minimal base score if you want it to still appear
+    }
+
     $daysSinceCreation = now()->diffInDays($entity->created_at);
-    $recencyScore = exp(-$daysSinceCreation / 7);
+    $recencyScore = exp(-$daysSinceCreation / 7) * 0.3; // Reduced weight
 
-    $engagementScore = ($entity->reaction_counts['total'] ?? 0) + count($entity->comments);
+    $engagementScore = (
+        ($entity->reaction_counts['total'] ?? 0) * 0.5 + 
+        count($entity->comments) * 0.5
+    ) * 0.4; // Increased weight
 
-    // Handle null alumniLocation
+    // Location matching with reduced scores
     $locationMatchScore = 0;
     if ($user->alumniLocation) {
-        $locationMatchScore =
-            ($entity->location === $user->alumniLocation->city ? 20 : 0) +
-            ($entity->city === $user->alumniLocation->city ? 10 : 0);
+        $locationMatchScore = (
+            ($entity->location === $user->alumniLocation->city ? 5 : 0) + // Reduced from 20
+            ($entity->city === $user->alumniLocation->city ? 3 : 0)  // Reduced from 10
+        ) * 0.2;
     }
 
+    // Education matching with reduced scores
     $educationMatchScore = 0;
     if ($user->educationalBackground) {
-        $educationMatchScore =
-            ($entity->creator->institution === $user->educationalBackground->institution ? 15 : 0) +
-            ($entity->creator->degree_earned === $user->educationalBackground->degree_earned ? 10 : 0);
+        $educationMatchScore = (
+            ($entity->creator->institution === $user->educationalBackground->institution ? 5 : 0) + // Reduced from 15
+            ($entity->creator->degree_earned === $user->educationalBackground->degree_earned ? 3 : 0) // Reduced from 10
+        ) * 0.1;
     }
 
+    // Employment matching with reduced scores
     $employmentMatchScore = 0;
     if ($user->employmentHistory && $user->employmentHistory->isNotEmpty()) {
         $latestEmployment = $user->employmentHistory->first();
         if ($latestEmployment) {
-            $employmentMatchScore =
-                ($entity->industry === ($latestEmployment->industry ?? 'Unknown') ? 15 : 0) +
-                ($entity->company_name === ($latestEmployment->company_name ?? 'Unknown') ? 10 : 0);
+            $employmentMatchScore = (
+                ($entity->industry === ($latestEmployment->industry ?? 'Unknown') ? 5 : 0) + // Reduced from 15
+                ($entity->company_name === ($latestEmployment->company_name ?? 'Unknown') ? 3 : 0) // Reduced from 10
+            ) * 0.1;
         }
     }
 
-    $popularityScore = $entity->creator->followers_count ?? 0;
+    // Popularity score with logarithmic scaling to prevent domination
+    $popularityScore = min(log10($entity->creator->followers_count + 1) * 2, 10) * 0.1;
 
-    // NEW: Following boost (if viewer follows the creator)
+    // Following boost (reduced)
     $followingBoostScore = \App\Models\Follow::where('follower_id', $user->id)
         ->where('followed_id', $entity->creator->id)
-        ->exists() ? 5 : 0;
+        ->exists() ? 2 : 0; // Reduced from 5
 
-    // Final score calculation with weights
+    // Final weighted sum
     $score = (
-        $recencyScore * 0.3 +
-        $engagementScore * 0.3 +
-        $locationMatchScore * 0.2 +
-        $educationMatchScore * 0.1 +
-        $employmentMatchScore * 0.1 +
-        $popularityScore * 0.1 +
-        $followingBoostScore * .1 // Just additive; adjust if needed
+        $recencyScore +
+        $engagementScore +
+        $locationMatchScore +
+        $educationMatchScore +
+        $employmentMatchScore +
+        $popularityScore +
+        $followingBoostScore
     );
 
-    return max($score, 0);
+    // Ensure score is between 0-100
+    return min(max($score, 0), 100);
 }
 private function recommendUsersTo($user)
 {

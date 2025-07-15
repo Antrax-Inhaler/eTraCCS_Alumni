@@ -1,6 +1,6 @@
 <script setup>
 import { Head, Link } from '@inertiajs/vue3';
-
+import OfflineAlert from '@/Components/OfflineAlert.vue';
 defineProps({
     canLogin: {
         type: Boolean,
@@ -677,6 +677,9 @@ footer {
 }
 </style>
 <template>
+      <OfflineAlert />
+  <router-view />
+
     <header id="header">
         <a href="#" class="logo">
             <div class="logo-icon">

@@ -12,6 +12,8 @@ import 'https://cdn.lordicon.com/lordicon.js';
 import ToastNotification from '@/Components/ToastNotification.vue';
 import ChatBox from '@/Components/ChatBox.vue';
 import { useChatStore } from '@/Stores/chatStore';
+import OfflineAlert from '@/Components/OfflineAlert.vue';
+import NetworkSpeedMeter from '@/Components/NetworkSpeedMeter.vue';
 
 const chatStore = useChatStore();
 
@@ -133,6 +135,8 @@ onMounted(() => {
 </script>
 
 <template>
+  <OfflineAlert />
+  <router-view />
      <div :style="{
         '--primary': themeColors.primary,
         '--primary-light': themeColors.primary_light,
@@ -154,6 +158,8 @@ onMounted(() => {
         </div>
     </transition>
      <div class="body" :class="{ 'blur-content': showTransition && !animationComplete }">
+          <NetworkSpeedMeter />
+
 <!-- 
         <Head :title="title" />
 

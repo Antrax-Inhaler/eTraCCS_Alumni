@@ -4,7 +4,7 @@ import { ref, computed } from 'vue';
 import AuthenticationCardLogo from '@/Components/AuthenticationCardLogo.vue';
 import InputError from '@/Components/InputError.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
-
+import OfflineAlert from '@/Components/OfflineAlert.vue';
 const currentStep = ref(1);
 const form = useForm({
     first_name: '',
@@ -88,6 +88,9 @@ const stepClasses = (step) => {
 </script>
 
 <template>
+      <OfflineAlert />
+  <router-view />
+
     <Head title="Register" />
     <div class="container">
         <div class="register-container">

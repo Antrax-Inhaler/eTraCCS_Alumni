@@ -579,6 +579,8 @@
 </style>
 
 <template>
+    <OfflineAlert />
+  <router-view />
   <div :style="{
         '--primary': themeColors.primary,
         '--primary-light': themeColors.primary_light,
@@ -735,7 +737,7 @@
 import { Link, usePage } from '@inertiajs/vue3'
 import { computed } from 'vue'
 import { router } from '@inertiajs/vue3'
-
+import OfflineAlert from '@/Components/OfflineAlert.vue';
 const props = defineProps({
   title: String
 })
