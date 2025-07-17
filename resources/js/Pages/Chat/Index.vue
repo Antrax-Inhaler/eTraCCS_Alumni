@@ -728,6 +728,7 @@ watch(activeConversation, (newVal) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  background-color: var(--card-bg);
 }
 
 .sidebar-header h2 {
