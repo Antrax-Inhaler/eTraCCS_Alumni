@@ -1,46 +1,3 @@
-<script setup>
-import AdminLayout from '@/Layouts/AdminLayout.vue';
-import { Head, Link, router } from '@inertiajs/vue3';
-import { ref } from 'vue';
-import relativeTime from 'dayjs/plugin/relativeTime';
-const props = defineProps({
-    alumni: Object,
-    filters: Object,
-    batchYears: Array,
-    demographics: Object
-});
-
-const search = ref(props.filters.search);
-const batchYear = ref(props.filters.batch_year);
-const hasAdditionalDegrees = ref(props.filters.has_additional_degrees);
-
-const filter = () => {
-    router.get(route('admin.alumni.index'), {
-        search: search.value,
-        batch_year: batchYear.value,
-        has_additional_degrees: hasAdditionalDegrees.value
-    }, {
-        preserveState: true,
-        replace: true
-    });
-};
-
-const unverifyAlumni = (userId) => {
-    if (confirm('Are you sure you want to unverify this alumni?')) {
-        router.post(route('admin.alumni.unverify', userId), {
-            preserveScroll: true
-        });
-    }
-};
-
-const getPrimaryDegree = (educationalBackgrounds) => {
-    return educationalBackgrounds.find(edu => edu.is_primary);
-};
-
-const getAdditionalDegrees = (educationalBackgrounds) => {
-    return educationalBackgrounds.filter(edu => !edu.is_primary && edu.degree_earned.toLowerCase().includes('bachelor'));
-};
-</script>
 
 <template>
     <Head title="Alumni Management" />
@@ -202,6 +159,50 @@ const getAdditionalDegrees = (educationalBackgrounds) => {
         </div>
     </AdminLayout>
 </template>
+
+<script setup>
+import AdminLayout from '@/Layouts/AdminLayout.vue';
+import { Head, Link, router } from '@inertiajs/vue3';
+import { ref } from 'vue';
+import relativeTime from 'dayjs/plugin/relativeTime';
+const props = defineProps({
+    alumni: Object,
+    filters: Object,
+    batchYears: Array,
+    demographics: Object
+});
+
+const search = ref(props.filters.search);
+const batchYear = ref(props.filters.batch_year);
+const hasAdditionalDegrees = ref(props.filters.has_additional_degrees);
+
+const filter = () => {
+    router.get(route('admin.alumni.index'), {
+        search: search.value,
+        batch_year: batchYear.value,
+        has_additional_degrees: hasAdditionalDegrees.value
+    }, {
+        preserveState: true,
+        replace: true
+    });
+};
+
+const unverifyAlumni = (userId) => {
+    if (confirm('Are you sure you want to unverify this alumni?')) {
+        router.post(route('admin.alumni.unverify', userId), {
+            preserveScroll: true
+        });
+    }
+};
+
+const getPrimaryDegree = (educationalBackgrounds) => {
+    return educationalBackgrounds.find(edu => edu.is_primary);
+};
+
+const getAdditionalDegrees = (educationalBackgrounds) => {
+    return educationalBackgrounds.filter(edu => !edu.is_primary && edu.degree_earned.toLowerCase().includes('bachelor'));
+};
+</script>
 
 <style scoped>
 /* Main Content */

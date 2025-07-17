@@ -1,17 +1,3 @@
-<script setup>
-import { ref } from 'vue';
-import Modal from '@/Components/Modal.vue';
-
-const props = defineProps({
-    show: Boolean,
-    alum: Object,
-});
-
-const emit = defineEmits(['close']);
-
-const activeTab = ref('profile');
-</script>
-
 <template>
     <Modal :show="show" @close="emit('close')" max-width="4xl">
         <div class="modal-content">
@@ -141,6 +127,21 @@ const activeTab = ref('profile');
         </div>
     </Modal>
 </template>
+<script setup>
+import { ref } from 'vue';
+import Modal from '@/Components/Modal.vue';
+
+const props = defineProps({
+    show: Boolean,
+    alum: Object,
+});
+
+const emit = defineEmits(['close']);
+
+const activeTab = ref('profile');
+</script>
+
+
 
 <style scoped>
 /* Modal styles same as CreateModal */

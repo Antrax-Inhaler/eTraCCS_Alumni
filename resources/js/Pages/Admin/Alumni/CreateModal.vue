@@ -1,43 +1,3 @@
-<script setup>
-import { ref } from 'vue';
-import { useForm } from '@inertiajs/vue3';
-import Modal from '@/Components/Modal.vue';
-import Button from '@/Components/Button.vue';
-import InputLabel from '@/Components/InputLabel.vue';
-import TextInput from '@/Components/TextInput.vue';
-import InputError from '@/Components/InputError.vue';
-import SelectInput from '@/Components/SelectInput.vue';
-
-const props = defineProps({
-    show: Boolean,
-    batchYears: Array,
-    degrees: Array,
-});
-
-const emit = defineEmits(['close']);
-
-const form = useForm({
-    first_name: '',
-    last_name: '',
-    middle_initial: '',
-    email: '',
-    password: '',
-    year_graduated: '',
-    degree_earned: '',
-    profile_photo: null,
-});
-
-const submit = () => {
-    form.post(route('admin.alumni.store'), {
-        preserveScroll: true,
-        onSuccess: () => {
-            emit('close');
-            form.reset();
-        },
-    });
-};
-</script>
-
 <template>
     <Modal :show="show" @close="emit('close')" max-width="2xl">
         <div class="modal-content">
@@ -159,6 +119,47 @@ const submit = () => {
         </div>
     </Modal>
 </template>
+
+<script setup>
+import { ref } from 'vue';
+import { useForm } from '@inertiajs/vue3';
+import Modal from '@/Components/Modal.vue';
+import Button from '@/Components/Button.vue';
+import InputLabel from '@/Components/InputLabel.vue';
+import TextInput from '@/Components/TextInput.vue';
+import InputError from '@/Components/InputError.vue';
+import SelectInput from '@/Components/SelectInput.vue';
+
+const props = defineProps({
+    show: Boolean,
+    batchYears: Array,
+    degrees: Array,
+});
+
+const emit = defineEmits(['close']);
+
+const form = useForm({
+    first_name: '',
+    last_name: '',
+    middle_initial: '',
+    email: '',
+    password: '',
+    year_graduated: '',
+    degree_earned: '',
+    profile_photo: null,
+});
+
+const submit = () => {
+    form.post(route('admin.alumni.store'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            emit('close');
+            form.reset();
+        },
+    });
+};
+</script>
+
 
 <style scoped>
 .modal-content {

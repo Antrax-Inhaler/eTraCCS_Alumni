@@ -1,43 +1,3 @@
-<script setup>
-import { ref } from 'vue';
-import { useForm } from '@inertiajs/vue3';
-import Modal from '@/Components/Modal.vue';
-import Button from '@/Components/Button.vue';
-import InputLabel from '@/Components/InputLabel.vue';
-import TextInput from '@/Components/TextInput.vue';
-import InputError from '@/Components/InputError.vue';
-import SelectInput from '@/Components/SelectInput.vue';
-
-const props = defineProps({
-    show: Boolean,
-    alum: Object,
-    batchYears: Array,
-    degrees: Array,
-});
-
-const emit = defineEmits(['close']);
-
-const form = useForm({
-    first_name: props.alum.first_name,
-    last_name: props.alum.last_name,
-    middle_initial: props.alum.middle_initial,
-    email: props.alum.email,
-    password: '',
-    year_graduated: props.alum.educational_backgrounds[0]?.year_graduated,
-    degree_earned: props.alum.educational_backgrounds[0]?.degree_earned,
-    profile_photo: null,
-});
-
-const submit = () => {
-    form.post(route('admin.alumni.update', props.alum.id), {
-        preserveScroll: true,
-        onSuccess: () => {
-            emit('close');
-        },
-    });
-};
-</script>
-
 <template>
     <Modal :show="show" @close="emit('close')" max-width="2xl">
         <div class="modal-content">
@@ -161,6 +121,47 @@ const submit = () => {
         </div>
     </Modal>
 </template>
+<script setup>
+import { ref } from 'vue';
+import { useForm } from '@inertiajs/vue3';
+import Modal from '@/Components/Modal.vue';
+import Button from '@/Components/Button.vue';
+import InputLabel from '@/Components/InputLabel.vue';
+import TextInput from '@/Components/TextInput.vue';
+import InputError from '@/Components/InputError.vue';
+import SelectInput from '@/Components/SelectInput.vue';
+
+const props = defineProps({
+    show: Boolean,
+    alum: Object,
+    batchYears: Array,
+    degrees: Array,
+});
+
+const emit = defineEmits(['close']);
+
+const form = useForm({
+    first_name: props.alum.first_name,
+    last_name: props.alum.last_name,
+    middle_initial: props.alum.middle_initial,
+    email: props.alum.email,
+    password: '',
+    year_graduated: props.alum.educational_backgrounds[0]?.year_graduated,
+    degree_earned: props.alum.educational_backgrounds[0]?.degree_earned,
+    profile_photo: null,
+});
+
+const submit = () => {
+    form.post(route('admin.alumni.update', props.alum.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            emit('close');
+        },
+    });
+};
+</script>
+
+
 
 <style scoped>
 /* Reuse modal styles from CreateModal */
