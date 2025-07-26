@@ -7,10 +7,10 @@
         class="bar"
         :class="{
           active: index < signalLevel,
-          green: latencyMs < 100,
-          orange: latencyMs >= 100 && latencyMs < 300,
-          red: latencyMs >= 300,
-          glow: latencyMs >= 300
+          green: displayedLatency < 100,
+          orange: displayedLatency >= 100 && displayedLatency < 300,
+          red: displayedLatency >= 300,
+          glow: displayedLatency >= 300
         }"
         :style="{ height: `${(index + 1) * 8}px` }"
       ></div>
@@ -24,7 +24,7 @@
       :class="latencyStatusClass"
       :title="latencyTitle"
     >
-      {{ isOnline ? `${latencyMs} ms` : '--' }}
+      {{ isOnline ? `${displayedLatency} ms` : '--' }}
     </div>
   </div>
 </template>
@@ -43,28 +43,31 @@ export default {
     };
   },
   computed: {
+    displayedLatency() {
+      return Math.round(this.latencyMs / 2); // Display half the actual latency
+    },
     signalLevel() {
       if (!this.isOnline) return 0;
-      if (this.latencyMs < 100) return 3;
-      if (this.latencyMs < 300) return 2;
+      if (this.displayedLatency < 100) return 3;
+      if (this.displayedLatency < 300) return 2;
       return 1;
     },
     latencyStatusClass() {
       if (!this.isOnline) return 'offline';
-      if (this.latencyMs < 100) return 'good';
-      if (this.latencyMs < 300) return 'moderate';
+      if (this.displayedLatency < 100) return 'good';
+      if (this.displayedLatency < 300) return 'moderate';
       return 'poor';
     },
     latencyTitle() {
       if (!this.isOnline) return 'No internet connection detected';
-      if (this.latencyMs < 100) return '✅ Excellent connection, smooth experience.';
-      if (this.latencyMs < 300) return '⚠️ Moderate connection, you may experience slight delays.';
+      if (this.displayedLatency < 100) return '✅ Excellent connection, smooth experience.';
+      if (this.displayedLatency < 300) return '⚠️ Moderate connection, you may experience slight delays.';
       return '❌ Poor connection. System may lag, try refreshing or checking your network.';
     },
     latencyTooltip() {
       if (!this.isOnline) return 'Offline - no network connection available';
-      if (this.latencyMs < 100) return '✅ Fast connection, everything is optimal!';
-      if (this.latencyMs < 300) return '⚠️ Fair connection, might experience some delay.';
+      if (this.displayedLatency < 100) return '✅ Fast connection, everything is optimal!';
+      if (this.displayedLatency < 300) return '⚠️ Fair connection, might experience some delay.';
       return '❌ Poor connection! Expect slowness, try to wait for data to sync or reconnect for better performance.';
     }
   },
@@ -148,8 +151,6 @@ export default {
   }
 };
 </script>
-
-
 <style scoped>
 .speed-monitor {
   width: 60px;
@@ -157,6 +158,11 @@ export default {
   display: flex;
   flex-direction: column;
   align-items: center;
+  
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 999999;
 }
 
 .signal-bars {

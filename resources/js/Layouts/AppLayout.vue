@@ -158,7 +158,6 @@ onMounted(() => {
         </div>
     </transition>
      <div class="body" :class="{ 'blur-content': showTransition && !animationComplete }">
-          <NetworkSpeedMeter />
 
 <!-- 
         <Head :title="title" />
@@ -181,6 +180,8 @@ onMounted(() => {
   </div>
   
         <div class="container">
+                                      <NetworkSpeedMeter />
+
 <ChatBox
             v-for="(chatUser, index) in chatStore.openChats"
             :key="chatUser.id"
@@ -262,6 +263,7 @@ onMounted(() => {
 
             <!-- Page Content -->
              <div class="main-content">
+
                 <main>
                 <slot />
             </main>
